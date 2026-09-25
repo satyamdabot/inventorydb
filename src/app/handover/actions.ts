@@ -65,6 +65,7 @@ export async function sendCards(formData: FormData) {
   // "person" or "hub": only the chosen mode's field is used, the other is ignored.
   const toHubMode = formData.get("mode") === "hub";
   const input = {
+    fromHub: String(formData.get("fromHub") ?? ""),
     recipient: toHubMode ? "" : String(formData.get("recipient") ?? ""),
     toHub: toHubMode ? String(formData.get("hub") ?? "") : "",
     note: String(formData.get("note") ?? ""),

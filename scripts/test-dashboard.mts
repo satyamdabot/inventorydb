@@ -11,7 +11,7 @@ const item = (id: string, over: Partial<Item> = {}): Item => ({
   current_holder: "", last_event_id: "", updated_at: "", attributes: "", prism_no: "", brand: "", model: "", ...over,
 });
 const event = (id: string, item_id: string, over: Partial<ItemEvent> = {}): ItemEvent => ({
-  event_id: id, batch_id: "b", item_id, action: "check_out", from_person: "", to_person: "", from_id: "", to_id: "", hub: "kadapa",
+  event_id: id, batch_id: "b", item_id, action: "check_out", from_person: "", to_person: "", from_id: "", to_id: "", from_hub: "", hub: "kadapa",
   status_after: "with_fo", occurred_at: "2026-09-20T10:00:00Z", recorded_at: "2026-09-20T10:00:00Z", recorded_by: "x", note: "", ...over,
 });
 const now = new Date("2026-09-25T12:00:00Z");

@@ -38,7 +38,8 @@ const ctxFor = (actor: string): HandoverContext => ({
 });
 const now = () => new Date(Date.UTC(2026, 8, 20, 12));
 const dash = (h = "") => computeDashboard(items, events, people, hubs, { hub: h, days: 30, now: now() });
-const send = (actor: string, to: string) => commit(planSend(items, { recipient: to, note: "" }, ctxFor(actor)));
+const send = (actor: string, to: string) =>
+  commit(planSend(items, { fromHub: items[0].current_hub, recipient: to, note: "" }, ctxFor(actor)));
 const receive = (actor: string, at: string) => commit(planReceive(items, { hub: at, note: "" }, ctxFor(actor)));
 const where = () => `${items[0].status}@${items[0].current_hub}/${items[0].current_holder}`;
 

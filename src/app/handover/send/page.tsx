@@ -6,7 +6,7 @@ import type { Role, Status } from "@/lib/schema";
 import { getStore } from "@/lib/store";
 import styles from "../form.module.css";
 import { sendCards } from "../actions";
-import ScanBox from "../ScanBox";
+import SendScanFields from "./SendScanFields";
 
 // The Send to list, grouped so it is easy to scan. What each group means is in the hint under the field.
 const GROUPS: { role: Role; label: string }[] = [
@@ -31,6 +31,18 @@ export default async function SendPage({ searchParams }: PageProps<"/handover/se
   const recipients = people.filter((p) => p.active !== "false").sort((a, b) => a.name.localeCompare(b.name));
   const byOptions = actorOptions(people, users, (id) => hubName.get(id) ?? id);
   const activeHubs = hubs.filter((h) => h.active !== "false").sort((a, b) => a.name.localeCompare(b.name));
+
+  // Start at the IM's own hub. Someone with no hub (an admin) starts where most cards are in stock.
+  const stockByHub = new Map<string, number>();
+  for (const i of items) if (i.status === "in_stock") stockByHub.set(i.current_hub, (stockByHub.get(i.current_hub) ?? 0) + 1);
+  const fullest = [...stockByHub.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+  const isActive = (id?: string) => !!id && activeHubs.some((h) => h.hub_id === id);
+  const myHub = people.find((p) => p.person_id === user.personId)?.hub;
+  const defaultFromHub = isActive(myHub)
+    ? myHub!
+    : isActive(fullest)
+      ? fullest!
+      : (activeHubs.find((h) => h.is_central === "true")?.hub_id ?? activeHubs[0]?.hub_id ?? "");
 
   const toPerson = people.find((p) => p.person_id === one(sp.person))?.name ?? one(sp.person);
   const toHubName = hubName.get(one(sp.hub)) ?? one(sp.hub);
@@ -70,14 +82,11 @@ export default async function SendPage({ searchParams }: PageProps<"/handover/se
           </div>
         </div>
 
-        <div className={styles.field}>
-          <label className={styles.label} htmlFor="scanned">
-            Cards
-          </label>
-          <div className={styles.control}>
-            <ScanBox id="scanned" mode="send" items={scanItems} />
-          </div>
-        </div>
+        <SendScanFields
+          hubs={activeHubs.map((h) => ({ id: h.hub_id, name: h.name }))}
+          defaultHub={defaultFromHub}
+          items={scanItems}
+        />
 
         <div className={styles.field}>
           <span className={styles.label}>Send to</span>

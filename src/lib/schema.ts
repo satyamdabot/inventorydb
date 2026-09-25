@@ -31,6 +31,7 @@ export const TABS = {
     "note",
     "from_id", // person_id (or admin email) behind from_person, stays stable if a name changes
     "to_id",
+    "from_hub", // the hub the card was at before this step (`hub` is where it is after)
   ],
   people: ["person_id", "name", "role", "hub", "linked_user", "active"],
   hubs: ["hub_id", "name", "city", "is_central", "active"],
@@ -104,6 +105,7 @@ export interface ItemEvent extends Row {
   note: string;
   from_id: string;
   to_id: string;
+  from_hub: string;
 }
 
 export interface Person extends Row {

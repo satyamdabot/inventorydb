@@ -46,9 +46,11 @@ export default function ScanBox({
   const results = useMemo(() => {
     const placeOf = new Map(items.map((i) => [i.id, i.hub]));
     return classifyScans(text, statuses, ALLOWED[mode]).map((r) => {
-      // A card sent to a hub must be received at that hub; say so before the form is submitted.
+      // Say so before submitting when a card is at a different hub than the one chosen: a card sent to a
+      // hub must be received there, and cards must be in stock at the hub they are sent from.
       const sentTo = placeOf.get(r.code);
-      if (mode === "receive" && hub && r.state === "ok" && r.status === "pending" && sentTo && sentTo !== hub) {
+      const elsewhere = mode === "send" || r.status === "pending";
+      if (hub && r.state === "ok" && elsewhere && sentTo && sentTo !== hub) {
         return { ...r, state: "wrong" as ScanState, sentTo };
       }
       return { ...r, sentTo: undefined };
@@ -103,7 +105,9 @@ export default function ScanBox({
                 {r.state === "ok" && (STATUS_LABELS[r.status as Status] ?? r.status)}
                 {r.state === "wrong" &&
                   (r.sentTo
-                    ? `sent to ${hubNames[r.sentTo] ?? r.sentTo}: switch "Receiving at" to that hub`
+                    ? mode === "send"
+                      ? `at ${hubNames[r.sentTo] ?? r.sentTo}: choose that hub in "Sending from"`
+                      : `sent to ${hubNames[r.sentTo] ?? r.sentTo}: switch "Receiving at" to that hub`
                     : `${STATUS_LABELS[r.status as Status] ?? r.status}: ${WRONG_HINT[mode]}`)}
                 {r.state === "unknown" && `not found (${r.code.length} characters). Check the scanner settings.`}
                 {r.state === "duplicate" && "scanned twice, counted once"}

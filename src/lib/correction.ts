@@ -100,6 +100,7 @@ export function planCorrection(
         to_person: "",
         from_id: "",
         to_id: "",
+        from_hub: item.current_hub,
         hub: newHome,
         status_after: item.status,
       });
@@ -114,6 +115,7 @@ export function planCorrection(
         to_person: displayName(ctx.people, newHolder),
         from_id: item.current_holder,
         to_id: newHolder,
+        from_hub: item.current_hub,
         hub: newHub,
         status_after: status,
       });

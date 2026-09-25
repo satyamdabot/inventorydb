@@ -18,6 +18,7 @@ export interface HandoverPlan {
 }
 
 export interface SendInput {
+  fromHub: string; // hub_id the cards are being sent from; every card must be in stock there
   recipient?: string; // person_id when handing to a person
   toHub?: string; // hub_id when sending to a hub with no named person
   note: string;
@@ -35,6 +36,8 @@ const HUB_FROM_RECIPIENT = new Set<Status>(["pending", "with_fo", "with_rig"]);
 
 // Cards an IM can take back into stock.
 const RECEIVABLE = new Set<Status>(["pending", "traveling", "with_fo", "with_rig"]);
+
+const hubName = (ctx: HandoverContext, id: string) => ctx.hubs.find((h) => h.hub_id === id)?.name ?? id;
 
 const list = (ids: string[]) => (ids.length > 5 ? `${ids.slice(0, 5).join(", ")} and ${ids.length - 5} more` : ids.join(", "));
 
@@ -73,8 +76,19 @@ export function planSend(targets: Item[], input: SendInput, ctx: HandoverContext
     } else plan.errors.push("Choose who or where the cards are going.");
   }
 
+  if (!ctx.hubs.some((h) => h.hub_id === input.fromHub && h.active !== "false")) {
+    plan.errors.push("Choose the hub you are sending from.");
+  }
   const notInStock = targets.filter((t) => t.status !== "in_stock").map((t) => `${t.item_id} (${t.status})`);
   if (notInStock.length) plan.errors.push(`Only in-stock cards can be sent. Not in stock: ${list(notInStock)}.`);
+
+  // Sending from a hub means the cards are in stock there. Choosing the right hub is the fix if they are not.
+  const elsewhere = targets.filter((t) => t.status === "in_stock" && t.current_hub !== input.fromHub);
+  if (elsewhere.length && plan.errors.length === 0) {
+    plan.errors.push(
+      `Not at ${hubName(ctx, input.fromHub)}: ${list(elsewhere.map((t) => `${t.item_id} (at ${hubName(ctx, t.current_hub)})`))}. Choose that hub in "Sending from".`,
+    );
+  }
   if (plan.errors.length || !status) return plan;
 
   const base = eventBase(ctx, input.note.trim());
@@ -89,6 +103,7 @@ export function planSend(targets: Item[], input: SendInput, ctx: HandoverContext
       to_person: displayName(ctx.people, holder),
       from_id: ctx.actorPersonId,
       to_id: holder,
+      from_hub: input.fromHub,
       hub,
       status_after: status,
     };
@@ -118,11 +133,10 @@ export function planReceive(
 
   // A card sent to a hub must be received at that hub, otherwise it would silently land in the wrong stock.
   // (Cards coming back from an IFO, FO or rig team have no fixed hub, so the receiver's hub is used.)
-  const hubName = (id: string) => ctx.hubs.find((h) => h.hub_id === id)?.name ?? id;
   const elsewhere = targets.filter((t) => t.status === "pending" && t.current_hub !== input.hub);
   if (elsewhere.length) {
     plan.errors.push(
-      `Sent to a different hub: ${list(elsewhere.map((t) => `${t.item_id} (to ${hubName(t.current_hub)})`))}. Receive them at that hub, not ${hubName(input.hub)}.`,
+      `Sent to a different hub: ${list(elsewhere.map((t) => `${t.item_id} (to ${hubName(ctx, t.current_hub)})`))}. Receive them at that hub, not ${hubName(ctx, input.hub)}.`,
     );
   }
   if (plan.errors.length) return plan;
@@ -142,6 +156,7 @@ export function planReceive(
       to_person: displayName(ctx.people, ctx.actorPersonId),
       from_id: item.current_holder,
       to_id: ctx.actorPersonId,
+      from_hub: item.current_hub,
       hub: input.hub,
       status_after: "in_stock",
     };

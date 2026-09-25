@@ -1,4 +1,4 @@
-import assert from "node:assert/strict";
+﻿import assert from "node:assert/strict";
 import { planReceive, planSend, type HandoverContext } from "../src/lib/handover";
 import { classifyScans, collectIds } from "../src/lib/scan";
 import type { Hub, Item, Person } from "../src/lib/schema";
@@ -51,21 +51,21 @@ const ctx: HandoverContext = {
 };
 
 // Each recipient role gives the right status and hub.
-const toIm = planSend([item("A")], { recipient: "im-kad", note: "" }, ctx);
+const toIm = planSend([item("A")], { recipient: "im-kad", fromHub: "bangalore", note: "" }, ctx);
 assert.deepEqual(toIm.errors, []);
 assert.equal(toIm.items[0].status, "pending");
 assert.equal(toIm.items[0].current_hub, "kadapa");
 assert.equal(toIm.items[0].current_holder, "im-kad");
 
-const toIfo = planSend([item("A")], { recipient: "ifo-amit", note: "" }, ctx);
+const toIfo = planSend([item("A")], { recipient: "ifo-amit", fromHub: "bangalore", note: "" }, ctx);
 assert.equal(toIfo.items[0].status, "traveling");
 assert.equal(toIfo.items[0].current_hub, "bangalore"); // stays where it left from
 
-assert.equal(planSend([item("A")], { recipient: "fo-ravi", note: "" }, ctx).items[0].status, "with_fo");
-assert.equal(planSend([item("A")], { recipient: "rig-s", note: "" }, ctx).items[0].status, "with_rig");
+assert.equal(planSend([item("A")], { recipient: "fo-ravi", fromHub: "bangalore", note: "" }, ctx).items[0].status, "with_fo");
+assert.equal(planSend([item("A")], { recipient: "rig-s", fromHub: "bangalore", note: "" }, ctx).items[0].status, "with_rig");
 
 // One event per card, one batch, actor recorded, last event linked on the item.
-const batch = planSend([item("A"), item("B"), item("C")], { recipient: "fo-ravi", note: "field trip" }, ctx);
+const batch = planSend([item("A"), item("B"), item("C")], { recipient: "fo-ravi", fromHub: "bangalore", note: "field trip" }, ctx);
 assert.equal(batch.events.length, 3);
 assert.equal(new Set(batch.events.map((e) => e.batch_id)).size, 1);
 assert.equal(batch.events[0].action, "check_out");
@@ -74,11 +74,11 @@ assert.equal(batch.events[0].note, "field trip");
 assert.equal(batch.items[2].last_event_id, batch.events[2].event_id);
 
 // Only in-stock cards can be sent; unknown or inactive recipients are refused. Nothing is planned.
-const blocked = planSend([item("A"), item("B", { status: "traveling" }), item("C", { status: "lost" })], { recipient: "fo-ravi", note: "" }, ctx);
+const blocked = planSend([item("A"), item("B", { status: "traveling" }), item("C", { status: "lost" })], { recipient: "fo-ravi", fromHub: "bangalore", note: "" }, ctx);
 assert.match(blocked.errors[0], /B \(traveling\), C \(lost\)/);
 assert.equal(blocked.events.length, 0);
-assert.match(planSend([item("A")], { recipient: "fo-gone", note: "" }, ctx).errors[0], /Choose who/);
-assert.match(planSend([item("A")], { recipient: "", note: "" }, ctx).errors[0], /Choose who/);
+assert.match(planSend([item("A")], { recipient: "fo-gone", fromHub: "bangalore", note: "" }, ctx).errors[0], /Choose who/);
+assert.match(planSend([item("A")], { recipient: "", fromHub: "bangalore", note: "" }, ctx).errors[0], /Choose who/);
 
 // Receive puts cards back in stock at the chosen hub with no holder.
 const back = planReceive(
@@ -104,36 +104,36 @@ assert.match(planReceive([item("A")], { hub: "kadapa", note: "" }, ctx).errors[0
 assert.match(planReceive([item("A", { status: "pending" })], { hub: "mars", note: "" }, ctx).errors[0], /receiving hub/);
 
 // Send to a hub with no named person: pending at that hub, no holder, any IM there can receive it.
-const toHub = planSend([item("A")], { toHub: "kadapa", note: "" }, ctx);
+const toHub = planSend([item("A")], { toHub: "kadapa", fromHub: "bangalore", note: "" }, ctx);
 assert.deepEqual(toHub.errors, []);
 assert.equal(toHub.items[0].status, "pending");
 assert.equal(toHub.items[0].current_hub, "kadapa");
 assert.equal(toHub.items[0].current_holder, "");
 assert.equal(toHub.events[0].to_person, "");
 assert.equal(toHub.events[0].hub, "kadapa");
-assert.match(planSend([item("A")], { toHub: "mars", note: "" }, ctx).errors[0], /active hub/);
-assert.match(planSend([item("A")], { note: "" }, ctx).errors[0], /who or where/);
+assert.match(planSend([item("A")], { toHub: "mars", fromHub: "bangalore", note: "" }, ctx).errors[0], /active hub/);
+assert.match(planSend([item("A")], { fromHub: "bangalore", note: "" }, ctx).errors[0], /who or where/);
 // ...and it can be received by hub, without anyone being named.
 const gotIt = planReceive(toHub.items, { hub: "kadapa", note: "" }, ctx);
 assert.deepEqual(gotIt.errors, []);
 assert.equal(gotIt.items[0].status, "in_stock");
 
 // Every checkout and receive is stamped with the exact date and time it was saved, on the event and the card.
-const stamped = planSend([item("A"), item("B")], { recipient: "fo-ravi", note: "" }, ctx);
+const stamped = planSend([item("A"), item("B")], { recipient: "fo-ravi", fromHub: "bangalore", note: "" }, ctx);
 assert.ok(stamped.events.every((e) => e.occurred_at === ctx.now && e.recorded_at === ctx.now));
 assert.equal(stamped.items[0].updated_at, ctx.now);
 assert.match(stamped.events[0].occurred_at, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/); // date AND time
 const stampedBack = planReceive(stamped.items, { hub: "kadapa", note: "" }, ctx);
 assert.ok(stampedBack.events.every((e) => e.occurred_at === ctx.now && e.recorded_at === ctx.now));
 // A form value can no longer change the time: extra fields are ignored.
-const sneaky = planSend([item("A")], { recipient: "fo-ravi", note: "", checkoutDate: "2020-01-01" } as never, ctx);
+const sneaky = planSend([item("A")], { recipient: "fo-ravi", fromHub: "bangalore", note: "", checkoutDate: "2020-01-01" } as never, ctx);
 assert.equal(sneaky.events[0].occurred_at, ctx.now);
 
 // Scan text: one per line, duplicates and blanks dropped, ticked ids merged.
 assert.deepEqual(collectIds("SD-1\r\nSD-2\n\nSD-1\n", ["SD-3", "SD-2"]), ["SD-3", "SD-2", "SD-1"]);
 
 // Your exact case: sent to the Kadapa location, then someone receives at Bangalore. Refused, nothing saved.
-const sentToKadapa = planSend([item("A"), item("B")], { toHub: "kadapa", note: "" }, ctx);
+const sentToKadapa = planSend([item("A"), item("B")], { toHub: "kadapa", fromHub: "bangalore", note: "" }, ctx);
 const wrongHub = planReceive(sentToKadapa.items, { hub: "bangalore", note: "" }, ctx);
 assert.match(wrongHub.errors[0], /Sent to a different hub: A \(to kadapa\), B \(to kadapa\)\. Receive them at that hub, not bangalore/);
 assert.equal(wrongHub.events.length, 0);
@@ -146,13 +146,29 @@ assert.ok(rightHub.items.every((i) => i.status === "in_stock" && i.current_hub =
 const fromFo = item("C", { status: "with_fo", current_holder: "fo-ravi", current_hub: "kadapa" });
 assert.deepEqual(planReceive([fromFo], { hub: "bangalore", note: "" }, ctx).errors, []);
 
+// "Sending from": every card must be in stock at that hub. Choosing the right hub is the fix.
+const atKadapa = item("K1", { current_hub: "kadapa", home_hub: "kadapa" });
+const atBlr = item("B1");
+const okFrom = planSend([atBlr], { fromHub: "bangalore", recipient: "fo-ravi", note: "" }, ctx);
+assert.deepEqual(okFrom.errors, []);
+assert.equal(okFrom.events[0].from_hub, "bangalore"); // where it left from
+assert.equal(okFrom.events[0].hub, "kadapa"); // where it is after (the FO's hub)
+const wrongFrom = planSend([atBlr, atKadapa], { fromHub: "bangalore", recipient: "fo-ravi", note: "" }, ctx);
+assert.match(wrongFrom.errors[0], /Not at bangalore: K1 \(at kadapa\)\. Choose that hub in "Sending from"/);
+assert.equal(wrongFrom.events.length, 0);
+assert.deepEqual(planSend([atKadapa], { fromHub: "kadapa", recipient: "fo-ravi", note: "" }, ctx).errors, []);
+assert.match(planSend([atBlr], { fromHub: "", recipient: "fo-ravi", note: "" }, ctx).errors[0], /hub you are sending from/);
+assert.match(planSend([atBlr], { fromHub: "mars", recipient: "fo-ravi", note: "" }, ctx).errors[0], /hub you are sending from/);
+// Receive and correction record the hub the card was at before as well.
+assert.equal(planReceive([item("Z", { status: "pending", current_hub: "kadapa" })], { hub: "kadapa", note: "" }, ctx).events[0].from_hub, "kadapa");
+
 // The log stores NAMES in from_person / to_person, and the ids alongside in from_id / to_id.
 const named: Person[] = [
   { person_id: "p-mihir", name: "Mihir Joshi", role: "im", hub: "bangalore", linked_user: "", active: "true" },
   { person_id: "p-ravi", name: "Ravi Patil", role: "fo", hub: "kadapa", linked_user: "", active: "true" },
 ];
 const namedCtx: HandoverContext = { ...ctx, people: named, actorPersonId: "p-mihir" };
-const sentNamed = planSend([item("A")], { recipient: "p-ravi", note: "" }, namedCtx);
+const sentNamed = planSend([item("A")], { recipient: "p-ravi", fromHub: "bangalore", note: "" }, namedCtx);
 assert.equal(sentNamed.events[0].from_person, "Mihir Joshi");
 assert.equal(sentNamed.events[0].to_person, "Ravi Patil");
 assert.equal(sentNamed.events[0].from_id, "p-mihir");
@@ -163,11 +179,11 @@ assert.equal(recvNamed.events[0].from_person, "Ravi Patil");
 assert.equal(recvNamed.events[0].to_person, "Mihir Joshi");
 // An admin with no person record is stored by email, in both the name and id columns.
 const adminCtx: HandoverContext = { ...namedCtx, actorPersonId: "sraj@x.com" };
-const byAdmin = planSend([item("A")], { recipient: "p-ravi", note: "" }, adminCtx);
+const byAdmin = planSend([item("A")], { recipient: "p-ravi", fromHub: "bangalore", note: "" }, adminCtx);
 assert.equal(byAdmin.events[0].from_person, "sraj@x.com");
 assert.equal(byAdmin.events[0].from_id, "sraj@x.com");
 // Sending to a hub names nobody.
-const toHubNamed = planSend([item("A")], { toHub: "kadapa", note: "" }, namedCtx);
+const toHubNamed = planSend([item("A")], { toHub: "kadapa", fromHub: "bangalore", note: "" }, namedCtx);
 assert.equal(toHubNamed.events[0].to_person, "");
 assert.equal(toHubNamed.events[0].to_id, "");
 

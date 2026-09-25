@@ -32,6 +32,7 @@ const event = (id: string, item_id: string, over: Partial<ItemEvent> = {}): Item
   to_person: "ifo-amit",
   from_id: "im-blr",
   to_id: "ifo-amit",
+  from_hub: "BLR",
   hub: "BLR",
   status_after: "traveling",
   occurred_at: now,
