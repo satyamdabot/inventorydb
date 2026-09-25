@@ -67,6 +67,15 @@ assert.equal(d.activity.reduce((n, day) => n + day.sent, 0), 2);
 assert.equal(d.noHistory, 1); // card E has no events
 assert.deepEqual(d.inconsistencies.map((p) => p.item_id), ["A"]); // A's row does not point at its last event
 
+// Days are India days. 20:00 UTC on the 24th is 1:30 am IST on the 25th, so it counts on the 25th,
+// whether it was saved as UTC ("Z") or as IST (+05:30).
+for (const at of ["2026-09-24T20:00:00Z", "2026-09-25T01:30:00+05:30"]) {
+  const ist = computeDashboard(items, [event("E9", "B", { occurred_at: at })], people, hubs, { hub: "", days: 7, now });
+  assert.equal(ist.activity[6].date, "2026-09-25");
+  assert.equal(ist.activity[6].sent, 1);
+  assert.equal(ist.activity[5].sent, 0);
+}
+
 // Hub filter scopes current-state numbers and events.
 const k = computeDashboard(items, events, people, hubs, { hub: "kadapa", days: 7, now });
 assert.equal(k.total, 3);

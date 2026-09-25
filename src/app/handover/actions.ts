@@ -8,6 +8,7 @@ import { planReceive, planSend, type HandoverContext, type HandoverPlan } from "
 import type { Item } from "@/lib/schema";
 import { collectIds } from "@/lib/scan";
 import { getStore } from "@/lib/store";
+import { istTimestamp } from "@/lib/time";
 
 const go = (path: string, params: Record<string, string>) => `${path}?${new URLSearchParams(params)}`;
 
@@ -50,7 +51,7 @@ async function run(
       people,
       actorPersonId: actor,
       by: user.email ?? "unknown",
-      now: new Date().toISOString(),
+      now: istTimestamp(),
       newId: (prefix) => `${prefix}-${randomUUID().slice(0, 8)}`,
     },
   );

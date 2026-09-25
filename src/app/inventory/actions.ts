@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { requireRole } from "@/lib/authz";
 import { planCorrection } from "@/lib/correction";
 import { getStore } from "@/lib/store";
+import { istTimestamp } from "@/lib/time";
 
 // Only ever redirect back into the inventory screens.
 const SAFE_BACK = /^\/inventory(\/[A-Za-z0-9_-]+)?$/;
@@ -49,7 +50,7 @@ export async function applyCorrection(formData: FormData) {
       hubs,
       people,
       by: user.email ?? "unknown",
-      now: new Date().toISOString(),
+      now: istTimestamp(),
       newId: (prefix) => `${prefix}-${randomUUID().slice(0, 8)}`,
     },
   );

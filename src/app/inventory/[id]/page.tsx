@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { requireRole } from "@/lib/authz";
 import { STATUS_LABELS, one } from "@/lib/labels";
 import { getStore } from "@/lib/store";
+import { formatIst } from "@/lib/time";
 import styles from "../../admin/admin.module.css";
 import { applyCorrection } from "../actions";
 import CorrectionPanel from "../CorrectionPanel";
@@ -97,7 +98,7 @@ export default async function ItemPage({ params, searchParams }: PageProps<"/inv
           <tbody>
             {[...history].reverse().map((e) => (
               <tr key={e.event_id}>
-                <td>{new Date(e.occurred_at).toLocaleString()}</td>
+                <td>{formatIst(e.occurred_at)} IST</td>
                 <td>{e.action}</td>
                 <td>
                   {personName.get(e.from_person) ?? (e.from_person || "—")} → {personName.get(e.to_person) ?? (e.to_person || "—")}

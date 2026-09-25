@@ -46,7 +46,7 @@ const ctx: HandoverContext = {
   people,
   actorPersonId: "im-blr",
   by: "im@x.com",
-  now: "2026-09-25T10:00:00Z",
+  now: "2026-09-25T15:30:00+05:30",
   newId: (p) => `${p}-${++n}`,
 };
 

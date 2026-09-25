@@ -1,4 +1,5 @@
 import { findInconsistencies, type Inconsistency } from "./consistency";
+import { istDate } from "./time";
 import { OUT_STATUSES, STATUSES, type Hub, type Item, type ItemEvent, type Person, type Role, type Status } from "./schema";
 
 export interface DashboardOptions {
@@ -56,7 +57,8 @@ export interface Dashboard {
 }
 
 const DAY = 86_400_000;
-const dateKey = (d: Date) => d.toISOString().slice(0, 10);
+// Days are India days: an event at 11 pm IST counts on that day, not the next UTC day.
+const dateKey = istDate;
 const oldest = (days: (number | null)[]) => days.reduce<number | null>((m, d) => (d === null ? m : m === null || d > m ? d : m), null);
 
 /** All dashboard numbers, computed from the sheet rows. Pure, so it can be tested without a browser. */
@@ -149,7 +151,8 @@ export function computeDashboard(
   }
   for (const e of events) {
     if (opts.hub && e.hub !== opts.hub) continue;
-    const day = index.get(e.occurred_at.slice(0, 10));
+    const at = Date.parse(e.occurred_at);
+    const day = Number.isNaN(at) ? undefined : index.get(dateKey(new Date(at)));
     if (!day) continue;
     if (e.action === "check_out") day.sent++;
     else if (e.action === "receive") day.received++;

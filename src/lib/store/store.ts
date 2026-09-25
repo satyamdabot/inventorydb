@@ -32,7 +32,8 @@ export class Store {
 
   async getHistory(itemId: string) {
     const events = (await this.list("events")).filter((e) => e.item_id === itemId);
-    return events.sort((a, b) => a.occurred_at.localeCompare(b.occurred_at));
+    // By instant, not by text, so old UTC rows and IST rows sort together correctly.
+    return events.sort((a, b) => Date.parse(a.occurred_at) - Date.parse(b.occurred_at));
   }
 
   /**
