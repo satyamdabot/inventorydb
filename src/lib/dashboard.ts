@@ -1,14 +1,11 @@
 import { findInconsistencies, type Inconsistency } from "./consistency";
-import { STATUSES, type Hub, type Item, type ItemEvent, type Person, type Role, type Status } from "./schema";
+import { OUT_STATUSES, STATUSES, type Hub, type Item, type ItemEvent, type Person, type Role, type Status } from "./schema";
 
 export interface DashboardOptions {
   hub: string; // hub_id to scope current-state numbers to, "" for all hubs
   days: number; // length of the activity window
   now: Date;
 }
-
-// Statuses where a card is out of an IM's hands and someone is expected to bring it back.
-export const OUT_STATUSES: readonly Status[] = ["pending", "traveling", "with_fo", "with_rig"];
 
 export interface HubRow {
   hub_id: string;
@@ -38,6 +35,13 @@ export interface AgingRow {
   hub: string;
   days: number | null;
 }
+export interface OverdueRow {
+  item_id: string;
+  holder: string;
+  hub: string;
+  expected: string; // YYYY-MM-DD
+  daysLate: number;
+}
 export interface ActivityDay {
   date: string; // YYYY-MM-DD (UTC)
   sent: number;
@@ -53,6 +57,7 @@ export interface Dashboard {
   holders: HolderRow[];
   pending: PendingRow[];
   longestOut: AgingRow[];
+  overdue: OverdueRow[];
   activity: ActivityDay[];
   noHistory: number;
   inconsistencies: Inconsistency[];
@@ -142,6 +147,19 @@ export function computeDashboard(
     .sort((a, b) => (b.days ?? -1) - (a.days ?? -1))
     .slice(0, 15);
 
+  // Out cards whose expected return date has passed (today itself is not late yet).
+  const today = dateKey(opts.now);
+  const overdue: OverdueRow[] = out
+    .filter((i) => i.expected_return && i.expected_return < today)
+    .map((i) => ({
+      item_id: i.item_id,
+      holder: personById.get(i.current_holder)?.name ?? i.current_holder,
+      hub: hubName.get(i.current_hub) ?? i.current_hub,
+      expected: i.expected_return,
+      daysLate: Math.floor((Date.parse(today) - Date.parse(i.expected_return)) / DAY),
+    }))
+    .sort((a, b) => b.daysLate - a.daysLate);
+
   // One bucket per day for the window, oldest first, so quiet days show as gaps in the chart.
   const activity: ActivityDay[] = [];
   const index = new Map<string, ActivityDay>();
@@ -169,6 +187,7 @@ export function computeDashboard(
     holders,
     pending,
     longestOut,
+    overdue,
     activity,
     noHistory: scoped.filter((i) => !withEvents.has(i.item_id)).length,
     inconsistencies: findInconsistencies(items, events),

@@ -8,11 +8,11 @@ const person = (id: string, role: Person["role"]): Person => ({ person_id: id, n
 const people = [person("fo-ravi", "fo"), person("im-kad", "im")];
 const item = (id: string, over: Partial<Item> = {}): Item => ({
   item_id: id, item_type: "sd_card", home_hub: "bangalore", current_hub: "bangalore", status: "in_stock",
-  current_holder: "", last_event_id: "", updated_at: "", attributes: "", prism_no: "", brand: "", model: "", ...over,
+  current_holder: "", last_event_id: "", updated_at: "", attributes: "", prism_no: "", brand: "", model: "", expected_return: "", ...over,
 });
 const event = (id: string, item_id: string, over: Partial<ItemEvent> = {}): ItemEvent => ({
   event_id: id, batch_id: "b", item_id, action: "check_out", from_person: "", to_person: "", hub: "kadapa",
-  status_after: "with_fo", occurred_at: "2026-09-20T10:00:00Z", recorded_at: "2026-09-20T10:00:00Z", recorded_by: "x", note: "", ...over,
+  status_after: "with_fo", occurred_at: "2026-09-20T10:00:00Z", recorded_at: "2026-09-20T10:00:00Z", recorded_by: "x", note: "", expected_return: "", ...over,
 });
 const now = new Date("2026-09-25T12:00:00Z");
 
@@ -66,6 +66,18 @@ assert.equal(d.activity[5].sent, 1); // 2026-09-24: card C sent
 assert.equal(d.activity.reduce((n, day) => n + day.sent, 0), 2);
 assert.equal(d.noHistory, 1); // card E has no events
 assert.deepEqual(d.inconsistencies.map((p) => p.item_id), ["A"]); // A's row does not point at its last event
+
+// Overdue: out cards past their expected return date. Today is not late; in-stock cards are never overdue.
+const withDue = [
+  ...items.slice(0, 1),
+  { ...items[1], expected_return: "2026-09-22" }, // B: 3 days late
+  { ...items[2], expected_return: "2026-09-25" }, // C: due today, not late
+  { ...items[3], expected_return: "2026-09-30" }, // D: not yet
+  { ...items[4], expected_return: "2026-09-01" }, // E lost, ignored
+];
+const late = computeDashboard(withDue, events, people, hubs, { hub: "", days: 7, now });
+assert.deepEqual(late.overdue.map((o) => [o.item_id, o.daysLate]), [["B", 3]]);
+assert.equal(d.overdue.length, 0);
 
 // Hub filter scopes current-state numbers and events.
 const k = computeDashboard(items, events, people, hubs, { hub: "kadapa", days: 7, now });

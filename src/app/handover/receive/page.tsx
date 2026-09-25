@@ -58,6 +58,7 @@ export default async function ReceivePage({ searchParams }: PageProps<"/handover
                 <th>Serial</th>
                 <th>Prism no.</th>
                 <th>Sent to</th>
+                <th>Expected</th>
               </tr>
             </thead>
             <tbody>
@@ -68,7 +69,8 @@ export default async function ReceivePage({ searchParams }: PageProps<"/handover
                   </td>
                   <td>{i.item_id}</td>
                   <td>{i.prism_no}</td>
-                  <td>{personName.get(i.current_holder) ?? i.current_holder}</td>
+                  <td>{personName.get(i.current_holder) ?? (i.current_holder || "Any IM at this hub")}</td>
+                  <td>{i.expected_return || "—"}</td>
                 </tr>
               ))}
             </tbody>

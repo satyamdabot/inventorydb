@@ -58,6 +58,14 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
 
   // Plain sentences about what to look at, most useful first. Empty means all is well.
   const attention: Attention[] = [];
+  if (d.overdue.length > 0) {
+    attention.push({
+      key: "overdue",
+      text: `${plural(d.overdue.length, "card")} still out past the expected check-in date, longest ${d.overdue[0].daysLate} days late`,
+      href: inventory({ overdue: "1", ...scope }),
+      tone: "warning",
+    });
+  }
   for (const p of d.pending) {
     attention.push({
       key: `pending-${p.hub_id}`,

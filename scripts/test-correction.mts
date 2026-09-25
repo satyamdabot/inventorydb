@@ -31,6 +31,7 @@ const item = (id: string, over: Partial<Item> = {}): Item => ({
   prism_no: "",
   brand: "",
   model: "",
+  expected_return: "",
   ...over,
 });
 let n = 0;

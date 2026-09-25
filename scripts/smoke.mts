@@ -21,6 +21,7 @@ const item = (id: string, over: Partial<Item> = {}): Item => ({
   prism_no: "",
   brand: "",
   model: "",
+  expected_return: "",
   ...over,
 });
 const event = (id: string, item_id: string, over: Partial<ItemEvent> = {}): ItemEvent => ({
@@ -36,6 +37,7 @@ const event = (id: string, item_id: string, over: Partial<ItemEvent> = {}): Item
   recorded_at: now,
   recorded_by: "im@example.com",
   note: "",
+  expected_return: "",
   ...over,
 });
 

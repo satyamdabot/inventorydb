@@ -16,8 +16,7 @@ async function run(
   path: string,
   build: (targets: Item[], ctx: HandoverContext) => HandoverPlan | Promise<HandoverPlan>,
   summary: (plan: HandoverPlan) => Record<string, string>,
-) {
-  const user = await requireRole("admin", "im");
+) {  const user = await requireRole("admin", "im");
   const ids = collectIds(String(formData.get("scanned") ?? ""), formData.getAll("ids").map(String));
   if (!ids.length) redirect(go(path, { error: "Scan or tick at least one card." }));
 
@@ -47,13 +46,25 @@ async function run(
 }
 
 export async function sendCards(formData: FormData) {
-  const recipient = String(formData.get("recipient") ?? "");
-  const note = String(formData.get("note") ?? "");
+  // "person" or "hub": only the chosen mode's field is used, the other is ignored.
+  const toHubMode = formData.get("mode") === "hub";
+  const input = {
+    recipient: toHubMode ? "" : String(formData.get("recipient") ?? ""),
+    toHub: toHubMode ? String(formData.get("hub") ?? "") : "",
+    note: String(formData.get("note") ?? ""),
+    checkoutDate: String(formData.get("checkoutDate") ?? ""),
+    expectedReturn: String(formData.get("expectedReturn") ?? ""),
+  };
   await run(
     formData,
     "/handover/send",
-    (targets, ctx) => planSend(targets, { recipient, note }, ctx),
-    (plan) => ({ status: plan.items[0]?.status ?? "", to: plan.items[0]?.current_holder ?? "" }),
+    (targets, ctx) => planSend(targets, input, ctx),
+    (plan): Record<string, string> => {
+      const first = plan.items[0];
+      return first?.current_holder
+        ? { status: first.status, person: first.current_holder }
+        : { status: first?.status ?? "", hub: first?.current_hub ?? "" };
+    },
   );
 }
 

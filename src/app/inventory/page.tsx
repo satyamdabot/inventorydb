@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireRole } from "@/lib/authz";
 import { STATUS_LABELS, one } from "@/lib/labels";
-import { STATUSES, type Status } from "@/lib/schema";
+import { OUT_STATUSES, STATUSES, type Status } from "@/lib/schema";
 import { getStore } from "@/lib/store";
 import styles from "../admin/admin.module.css";
 import { applyCorrection } from "./actions";
@@ -18,6 +18,8 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
   const statuses = status.split(",").filter(Boolean);
   const hub = one(sp.hub);
   const holder = one(sp.holder);
+  const overdue = one(sp.overdue) === "1"; // still out after the expected check-in date
+  const today = new Date().toISOString().slice(0, 10);
   const page = Math.max(1, Number(one(sp.page)) || 1);
 
   const store = getStore();
@@ -30,6 +32,7 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
       (!statuses.length || statuses.includes(i.status)) &&
       (!hub || i.current_hub === hub) &&
       (!holder || i.current_holder === holder) &&
+      (!overdue || (OUT_STATUSES.includes(i.status) && !!i.expected_return && i.expected_return < today)) &&
       (!q ||
         i.item_id.toLowerCase().includes(q) ||
         i.prism_no.toLowerCase().includes(q) ||
@@ -42,7 +45,7 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
   const sortedHubs = [...hubs].sort((a, b) => a.name.localeCompare(b.name));
 
   const pageLink = (p: number) => {
-    const params = new URLSearchParams({ ...(q && { q }), ...(status && { status }), ...(hub && { hub }), ...(holder && { holder }), page: String(p) });
+    const params = new URLSearchParams({ ...(q && { q }), ...(status && { status }), ...(hub && { hub }), ...(holder && { holder }), ...(overdue && { overdue: "1" }), page: String(p) });
     return `/inventory?${params}`;
   };
 
@@ -58,6 +61,7 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
           <th>Status</th>
           <th>Current hub</th>
           <th>Holder</th>
+          <th>Expected back</th>
           <th>Home hub</th>
         </tr>
       </thead>
@@ -78,6 +82,7 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
             <td>{STATUS_LABELS[i.status] ?? i.status}</td>
             <td>{hubName.get(i.current_hub) ?? i.current_hub}</td>
             <td>{personName.get(i.current_holder) ?? i.current_holder}</td>
+            <td>{i.expected_return}</td>
             <td>{hubName.get(i.home_hub) ?? i.home_hub}</td>
           </tr>
         ))}
@@ -127,6 +132,14 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
             </option>
           ))}
         </select>
+        {overdue && (
+          <>
+            <input type="hidden" name="overdue" value="1" />
+            <span className={styles.muted}>
+              Past expected check-in · <Link href="/inventory">clear</Link>
+            </span>
+          </>
+        )}
         {holder && <input type="hidden" name="holder" value={holder} />}
         <button type="submit">Filter</button>
         {holder && (

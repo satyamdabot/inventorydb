@@ -38,6 +38,7 @@ const item = (id: string, over: Partial<Item> = {}): Item => ({
   prism_no: "",
   brand: "",
   model: "",
+  expected_return: "",
   ...over,
 });
 let n = 0;
@@ -102,6 +103,40 @@ assert.equal(short.events[0].note, "Mismatch: expected 3, received 1. one missin
 // Cards that are not waiting to be received are refused.
 assert.match(planReceive([item("A")], { hub: "kadapa", note: "" }, ctx).errors[0], /not waiting/);
 assert.match(planReceive([item("A", { status: "pending" })], { hub: "mars", note: "" }, ctx).errors[0], /receiving hub/);
+
+// Send to a hub with no named person: pending at that hub, no holder, any IM there can receive it.
+const toHub = planSend([item("A")], { toHub: "kadapa", note: "" }, ctx);
+assert.deepEqual(toHub.errors, []);
+assert.equal(toHub.items[0].status, "pending");
+assert.equal(toHub.items[0].current_hub, "kadapa");
+assert.equal(toHub.items[0].current_holder, "");
+assert.equal(toHub.events[0].to_person, "");
+assert.equal(toHub.events[0].hub, "kadapa");
+assert.match(planSend([item("A")], { toHub: "mars", note: "" }, ctx).errors[0], /active hub/);
+assert.match(planSend([item("A")], { note: "" }, ctx).errors[0], /who or where/);
+// ...and it can be received by hub, without anyone being named.
+const gotIt = planReceive(toHub.items, { hub: "kadapa", note: "" }, ctx);
+assert.deepEqual(gotIt.errors, []);
+assert.equal(gotIt.items[0].status, "in_stock");
+
+// Checkout date: defaults to today, can be earlier (keeps the time of day), never in the future.
+assert.equal(planSend([item("A")], { recipient: "fo-ravi", note: "" }, ctx).events[0].occurred_at, "2026-09-25T10:00:00Z");
+const backdated = planSend([item("A")], { recipient: "fo-ravi", note: "", checkoutDate: "2026-09-22" }, ctx);
+assert.equal(backdated.events[0].occurred_at, "2026-09-22T10:00:00Z");
+assert.equal(backdated.events[0].recorded_at, "2026-09-25T10:00:00Z"); // when it was really entered
+assert.match(planSend([item("A")], { recipient: "fo-ravi", note: "", checkoutDate: "2026-09-26" }, ctx).errors[0], /future/);
+assert.match(planSend([item("A")], { recipient: "fo-ravi", note: "", checkoutDate: "soon" }, ctx).errors[0], /valid checkout/);
+
+// Expected check-in: stored on the card and its events, cleared when the card is received, never before checkout.
+const due = planSend([item("A")], { recipient: "fo-ravi", note: "", expectedReturn: "2026-10-05" }, ctx);
+assert.equal(due.items[0].expected_return, "2026-10-05");
+assert.equal(due.events[0].expected_return, "2026-10-05");
+assert.equal(planReceive(due.items, { hub: "kadapa", note: "" }, ctx).items[0].expected_return, "");
+assert.match(
+  planSend([item("A")], { recipient: "fo-ravi", note: "", checkoutDate: "2026-09-24", expectedReturn: "2026-09-23" }, ctx).errors[0],
+  /before the checkout/,
+);
+assert.match(planSend([item("A")], { recipient: "fo-ravi", note: "", expectedReturn: "tomorrow" }, ctx).errors[0], /valid expected/);
 
 // Scan text: one per line, duplicates and blanks dropped, ticked ids merged.
 assert.deepEqual(collectIds("SD-1\r\nSD-2\n\nSD-1\n", ["SD-3", "SD-2"]), ["SD-3", "SD-2", "SD-1"]);
