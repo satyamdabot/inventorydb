@@ -2,6 +2,7 @@
 
 import { randomUUID } from "node:crypto";
 import { redirect } from "next/navigation";
+import { actorOptions, defaultActor, resolveActor } from "@/lib/actors";
 import { requireRole } from "@/lib/authz";
 import { planReceive, planSend, type HandoverContext, type HandoverPlan } from "@/lib/handover";
 import type { Item } from "@/lib/schema";
@@ -21,7 +22,21 @@ async function run(
   if (!ids.length) redirect(go(path, { error: "Scan or tick at least one card." }));
 
   const store = getStore();
-  const [found, hubs, people] = await Promise.all([store.getItemsByIds(ids), store.list("hubs"), store.list("people")]);
+  const [found, hubs, people, users] = await Promise.all([
+    store.getItemsByIds(ids),
+    store.list("hubs"),
+    store.list("people"),
+    store.list("users"),
+  ]);
+
+  // Who is recording the handover (Sent by / Received by). The signed-in account is saved separately.
+  const hubName = new Map(hubs.map((h) => [h.hub_id, h.name]));
+  const actor = resolveActor(
+    String(formData.get("by") ?? "") || defaultActor(user),
+    actorOptions(people, users, (id) => hubName.get(id) ?? id),
+  );
+  if (!actor) redirect(go(path, { error: "Choose an IM or admin for who is recording this handover." }));
+
   const missing = ids.filter((id) => !found.has(id));
   if (missing.length) {
     const shown = missing.slice(0, 5).join(", ");
@@ -33,7 +48,7 @@ async function run(
     {
       hubs,
       people,
-      actorPersonId: user.personId,
+      actorPersonId: actor,
       by: user.email ?? "unknown",
       now: new Date().toISOString(),
       newId: (prefix) => `${prefix}-${randomUUID().slice(0, 8)}`,

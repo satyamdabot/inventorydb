@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { actorOptions, defaultActor } from "@/lib/actors";
 import { requireRole } from "@/lib/authz";
 import { one } from "@/lib/labels";
 import { getStore } from "@/lib/store";
@@ -9,8 +10,15 @@ export default async function ReceivePage({ searchParams }: PageProps<"/handover
   const user = await requireRole("admin", "im");
   const sp = await searchParams;
   const store = getStore();
-  const [items, hubs, people] = await Promise.all([store.list("items"), store.list("hubs"), store.list("people")]);
+  const [items, hubs, people, users] = await Promise.all([
+    store.list("items"),
+    store.list("hubs"),
+    store.list("people"),
+    store.list("users"),
+  ]);
   const activeHubs = hubs.filter((h) => h.active !== "false").sort((a, b) => a.name.localeCompare(b.name));
+  const hubNames = new Map(hubs.map((h) => [h.hub_id, h.name]));
+  const byOptions = actorOptions(people, users, (id) => hubNames.get(id) ?? id);
   const personName = new Map(people.map((p) => [p.person_id, p.name]));
 
   // Default to the signed-in IM's own hub, else the central hub.
@@ -82,6 +90,13 @@ export default async function ReceivePage({ searchParams }: PageProps<"/handover
           className={styles.textarea}
         />
         <div className={styles.row}>
+          <select name="by" defaultValue={defaultActor(user)} aria-label="Received by" required>
+            {byOptions.map((o) => (
+              <option key={o.value} value={o.value}>
+                Received by: {o.label}
+              </option>
+            ))}
+          </select>
           <input name="expected" type="number" min="0" placeholder="Expected count (optional)" />
           <input name="note" placeholder="Note (optional)" />
           <button type="submit">Receive cards</button>

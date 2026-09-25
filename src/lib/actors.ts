@@ -1,0 +1,36 @@
+import type { AppUser, Person } from "./schema";
+
+export interface ActorOption {
+  value: string; // an IM's person_id, or an admin's email
+  label: string;
+}
+
+/**
+ * Who can be named as the person sending or receiving: every active IM, plus every active admin
+ * who is not already covered by a linked IM entry. The signed-in account is always recorded
+ * separately as `recorded_by`, so naming someone else here never hides who really did it.
+ */
+export function actorOptions(people: Person[], users: AppUser[], hubName: (hubId: string) => string): ActorOption[] {
+  const ims = people
+    .filter((p) => p.role === "im" && p.active !== "false")
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((p) => ({ value: p.person_id, label: `${p.name} (IM, ${hubName(p.hub)})` }));
+
+  const linked = new Set(people.map((p) => p.person_id));
+  const admins = users
+    .filter((u) => u.role === "admin" && u.active !== "false" && !(u.person_id && linked.has(u.person_id)))
+    .sort((a, b) => a.email.localeCompare(b.email))
+    .map((u) => ({ value: u.email.toLowerCase(), label: `${u.email} (Admin)` }));
+
+  return [...ims, ...admins];
+}
+
+/** The signed-in user as an actor value: their linked person, or their email if they have none. */
+export function defaultActor(user: { personId?: string; email?: string | null }): string {
+  return user.personId || (user.email ?? "").toLowerCase();
+}
+
+/** The value if it is one of the allowed options, otherwise undefined. */
+export function resolveActor(value: string, options: ActorOption[]): string | undefined {
+  return options.find((o) => o.value === value)?.value;
+}

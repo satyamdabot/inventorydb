@@ -3,8 +3,8 @@ import type { Hub, Item, ItemEvent, Person, Role, Status } from "./schema";
 export interface HandoverContext {
   hubs: Hub[];
   people: Person[];
-  actorPersonId: string; // the signed-in IM's linked person, "" for an admin with none
-  by: string; // signed-in email
+  actorPersonId: string; // who did the handover: an IM's person_id, or an admin's email
+  by: string; // signed-in email, always saved as recorded_by
   now: string; // ISO timestamp taken when the form is saved, used for every event in the batch
   newId: (prefix: string) => string;
 }
