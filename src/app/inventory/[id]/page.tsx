@@ -45,8 +45,6 @@ export default async function ItemPage({ params, searchParams }: PageProps<"/inv
         <dd>{hubName.get(item.current_hub) ?? item.current_hub}</dd>
         <dt>Holder</dt>
         <dd>{personName.get(item.current_holder) ?? (item.current_holder || "—")}</dd>
-        <dt>Expected back</dt>
-        <dd>{item.expected_return || "—"}</dd>
         <dt>Home hub</dt>
         <dd>{hubName.get(item.home_hub) ?? item.home_hub}</dd>
         <dt>Prism no.</dt>

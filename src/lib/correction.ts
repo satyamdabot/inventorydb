@@ -1,5 +1,4 @@
 import {
-  OUT_STATUSES,
   STATUSES,
   type Hub,
   type Item,
@@ -73,7 +72,7 @@ export function planCorrection(
 
   const note = input.note.trim();
   const batch = ctx.newId("b");
-  const base = { batch_id: batch, occurred_at: ctx.now, recorded_at: ctx.now, recorded_by: ctx.by, note, expected_return: "" };
+  const base = { batch_id: batch, occurred_at: ctx.now, recorded_at: ctx.now, recorded_by: ctx.by, note };
 
   for (const item of targets) {
     const newHolder = needRole ? holder!.person_id : "";
@@ -121,8 +120,6 @@ export function planCorrection(
       current_hub: newHub,
       current_holder: newHolder,
       home_hub: newHome,
-      // A card that is back in stock (or lost, etc.) is no longer expected back.
-      expected_return: OUT_STATUSES.includes(status) ? item.expected_return : "",
       last_event_id: events[events.length - 1].event_id,
       updated_at: ctx.now,
     });

@@ -14,7 +14,6 @@ export default async function SendPage({ searchParams }: PageProps<"/handover/se
   const hubName = new Map(hubs.map((h) => [h.hub_id, h.name]));
   const recipients = people.filter((p) => p.active !== "false").sort((a, b) => a.name.localeCompare(b.name));
   const activeHubs = hubs.filter((h) => h.active !== "false").sort((a, b) => a.name.localeCompare(b.name));
-  const today = new Date().toISOString().slice(0, 10);
 
   const toPerson = people.find((p) => p.person_id === one(sp.person))?.name ?? one(sp.person);
   const toHubName = hubName.get(one(sp.hub)) ?? one(sp.hub);
@@ -107,30 +106,12 @@ export default async function SendPage({ searchParams }: PageProps<"/handover/se
         </div>
 
         <div className={styles.field}>
-          <label className={styles.label} htmlFor="checkoutDate">
-            Checkout date
-          </label>
-          <div className={styles.control}>
-            <input id="checkoutDate" name="checkoutDate" type="date" defaultValue={today} max={today} required />
-          </div>
-        </div>
-
-        <div className={styles.field}>
-          <label className={styles.label} htmlFor="expectedReturn">
-            Expected check-in date
-          </label>
-          <div className={styles.control}>
-            <input id="expectedReturn" name="expectedReturn" type="date" min={today} />
-            <p className={styles.hint}>Optional. The dashboard flags cards that are still out after this date.</p>
-          </div>
-        </div>
-
-        <div className={styles.field}>
           <label className={styles.label} htmlFor="note">
             Notes
           </label>
           <div className={styles.control}>
             <textarea id="note" name="note" rows={3} className={styles.textarea} />
+            <p className={styles.hint}>The checkout date and time are recorded automatically when you press Send.</p>
           </div>
         </div>
 

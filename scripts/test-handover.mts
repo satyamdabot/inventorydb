@@ -38,7 +38,6 @@ const item = (id: string, over: Partial<Item> = {}): Item => ({
   prism_no: "",
   brand: "",
   model: "",
-  expected_return: "",
   ...over,
 });
 let n = 0;
@@ -119,24 +118,16 @@ const gotIt = planReceive(toHub.items, { hub: "kadapa", note: "" }, ctx);
 assert.deepEqual(gotIt.errors, []);
 assert.equal(gotIt.items[0].status, "in_stock");
 
-// Checkout date: defaults to today, can be earlier (keeps the time of day), never in the future.
-assert.equal(planSend([item("A")], { recipient: "fo-ravi", note: "" }, ctx).events[0].occurred_at, "2026-09-25T10:00:00Z");
-const backdated = planSend([item("A")], { recipient: "fo-ravi", note: "", checkoutDate: "2026-09-22" }, ctx);
-assert.equal(backdated.events[0].occurred_at, "2026-09-22T10:00:00Z");
-assert.equal(backdated.events[0].recorded_at, "2026-09-25T10:00:00Z"); // when it was really entered
-assert.match(planSend([item("A")], { recipient: "fo-ravi", note: "", checkoutDate: "2026-09-26" }, ctx).errors[0], /future/);
-assert.match(planSend([item("A")], { recipient: "fo-ravi", note: "", checkoutDate: "soon" }, ctx).errors[0], /valid checkout/);
-
-// Expected check-in: stored on the card and its events, cleared when the card is received, never before checkout.
-const due = planSend([item("A")], { recipient: "fo-ravi", note: "", expectedReturn: "2026-10-05" }, ctx);
-assert.equal(due.items[0].expected_return, "2026-10-05");
-assert.equal(due.events[0].expected_return, "2026-10-05");
-assert.equal(planReceive(due.items, { hub: "kadapa", note: "" }, ctx).items[0].expected_return, "");
-assert.match(
-  planSend([item("A")], { recipient: "fo-ravi", note: "", checkoutDate: "2026-09-24", expectedReturn: "2026-09-23" }, ctx).errors[0],
-  /before the checkout/,
-);
-assert.match(planSend([item("A")], { recipient: "fo-ravi", note: "", expectedReturn: "tomorrow" }, ctx).errors[0], /valid expected/);
+// Every checkout and receive is stamped with the exact date and time it was saved, on the event and the card.
+const stamped = planSend([item("A"), item("B")], { recipient: "fo-ravi", note: "" }, ctx);
+assert.ok(stamped.events.every((e) => e.occurred_at === ctx.now && e.recorded_at === ctx.now));
+assert.equal(stamped.items[0].updated_at, ctx.now);
+assert.match(stamped.events[0].occurred_at, /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/); // date AND time
+const stampedBack = planReceive(stamped.items, { hub: "kadapa", note: "" }, ctx);
+assert.ok(stampedBack.events.every((e) => e.occurred_at === ctx.now && e.recorded_at === ctx.now));
+// A form value can no longer change the time: extra fields are ignored.
+const sneaky = planSend([item("A")], { recipient: "fo-ravi", note: "", checkoutDate: "2020-01-01" } as never, ctx);
+assert.equal(sneaky.events[0].occurred_at, ctx.now);
 
 // Scan text: one per line, duplicates and blanks dropped, ticked ids merged.
 assert.deepEqual(collectIds("SD-1\r\nSD-2\n\nSD-1\n", ["SD-3", "SD-2"]), ["SD-3", "SD-2", "SD-1"]);

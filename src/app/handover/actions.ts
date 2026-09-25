@@ -52,8 +52,6 @@ export async function sendCards(formData: FormData) {
     recipient: toHubMode ? "" : String(formData.get("recipient") ?? ""),
     toHub: toHubMode ? String(formData.get("hub") ?? "") : "",
     note: String(formData.get("note") ?? ""),
-    checkoutDate: String(formData.get("checkoutDate") ?? ""),
-    expectedReturn: String(formData.get("expectedReturn") ?? ""),
   };
   await run(
     formData,

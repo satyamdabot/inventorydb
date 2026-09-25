@@ -5,7 +5,7 @@ export interface HandoverContext {
   people: Person[];
   actorPersonId: string; // the signed-in IM's linked person, "" for an admin with none
   by: string; // signed-in email
-  now: string;
+  now: string; // ISO timestamp taken when the form is saved, used for every event in the batch
   newId: (prefix: string) => string;
 }
 
@@ -20,8 +20,6 @@ export interface SendInput {
   recipient?: string; // person_id when handing to a person
   toHub?: string; // hub_id when sending to a hub with no named person
   note: string;
-  checkoutDate?: string; // YYYY-MM-DD, defaults to today
-  expectedReturn?: string; // YYYY-MM-DD, optional
 }
 
 // What a card becomes when an IM hands it to someone of each role.
@@ -37,19 +35,16 @@ const HUB_FROM_RECIPIENT = new Set<Status>(["pending", "with_fo", "with_rig"]);
 // Cards an IM can take back into stock.
 const RECEIVABLE = new Set<Status>(["pending", "traveling", "with_fo", "with_rig"]);
 
-const DATE = /^\d{4}-\d{2}-\d{2}$/;
-const validDate = (s: string) => DATE.test(s) && !Number.isNaN(Date.parse(s));
-
 const list = (ids: string[]) => (ids.length > 5 ? `${ids.slice(0, 5).join(", ")} and ${ids.length - 5} more` : ids.join(", "));
 
-function eventBase(ctx: HandoverContext, note: string, occurredAt: string, expectedReturn: string) {
+// Every event is stamped with the moment it is saved. There is no way to enter a different time.
+function eventBase(ctx: HandoverContext, note: string) {
   return {
     batch_id: ctx.newId("b"),
-    occurred_at: occurredAt,
+    occurred_at: ctx.now,
     recorded_at: ctx.now,
     recorded_by: ctx.by,
     note,
-    expected_return: expectedReturn,
   };
 }
 
@@ -59,16 +54,6 @@ function eventBase(ctx: HandoverContext, note: string, occurredAt: string, expec
  */
 export function planSend(targets: Item[], input: SendInput, ctx: HandoverContext): HandoverPlan {
   const plan: HandoverPlan = { events: [], items: [], errors: [] };
-  const today = ctx.now.slice(0, 10);
-
-  const checkout = input.checkoutDate || today;
-  if (!validDate(checkout)) plan.errors.push("Enter a valid checkout date.");
-  else if (checkout > today) plan.errors.push("The checkout date can't be in the future.");
-  const expected = input.expectedReturn || "";
-  if (expected) {
-    if (!validDate(expected)) plan.errors.push("Enter a valid expected check-in date.");
-    else if (validDate(checkout) && expected < checkout) plan.errors.push("The expected check-in date can't be before the checkout date.");
-  }
 
   let status: Status | undefined;
   let holder = "";
@@ -91,8 +76,7 @@ export function planSend(targets: Item[], input: SendInput, ctx: HandoverContext
   if (notInStock.length) plan.errors.push(`Only in-stock cards can be sent. Not in stock: ${list(notInStock)}.`);
   if (plan.errors.length || !status) return plan;
 
-  // The chosen date keeps today's time of day, so events on the same date still sort in the order they happened.
-  const base = eventBase(ctx, input.note.trim(), `${checkout}T${ctx.now.slice(11)}`, expected);
+  const base = eventBase(ctx, input.note.trim());
   for (const item of targets) {
     const hub = fixedHub || item.current_hub;
     const event: ItemEvent = {
@@ -111,7 +95,6 @@ export function planSend(targets: Item[], input: SendInput, ctx: HandoverContext
       status,
       current_hub: hub,
       current_holder: holder,
-      expected_return: expected,
       last_event_id: event.event_id,
       updated_at: ctx.now,
     });
@@ -135,7 +118,7 @@ export function planReceive(
     plan.mismatch = `Mismatch: expected ${input.expected}, received ${targets.length}.`;
   }
   const note = [plan.mismatch, input.note.trim()].filter(Boolean).join(" ");
-  const base = eventBase(ctx, note, ctx.now, "");
+  const base = eventBase(ctx, note);
   for (const item of targets) {
     const event: ItemEvent = {
       ...base,
@@ -153,7 +136,6 @@ export function planReceive(
       status: "in_stock",
       current_hub: input.hub,
       current_holder: "",
-      expected_return: "",
       last_event_id: event.event_id,
       updated_at: ctx.now,
     });

@@ -15,7 +15,6 @@ export const TABS = {
     "prism_no",
     "brand",
     "model", // SD card model name
-    "expected_return", // YYYY-MM-DD, set while a card is out
   ],
   events: [
     "event_id",
@@ -30,7 +29,6 @@ export const TABS = {
     "recorded_at",
     "recorded_by",
     "note",
-    "expected_return",
   ],
   people: ["person_id", "name", "role", "hub", "linked_user", "active"],
   hubs: ["hub_id", "name", "city", "is_central", "active"],
@@ -87,7 +85,6 @@ export interface Item extends Row {
   prism_no: string;
   brand: string;
   model: string;
-  expected_return: string;
 }
 
 export interface ItemEvent extends Row {
@@ -103,7 +100,6 @@ export interface ItemEvent extends Row {
   recorded_at: string;
   recorded_by: string;
   note: string;
-  expected_return: string;
 }
 
 export interface Person extends Row {
