@@ -132,6 +132,31 @@ assert.equal(sneaky.events[0].occurred_at, ctx.now);
 // Scan text: one per line, duplicates and blanks dropped, ticked ids merged.
 assert.deepEqual(collectIds("SD-1\r\nSD-2\n\nSD-1\n", ["SD-3", "SD-2"]), ["SD-3", "SD-2", "SD-1"]);
 
+// The log stores NAMES in from_person / to_person, and the ids alongside in from_id / to_id.
+const named: Person[] = [
+  { person_id: "p-mihir", name: "Mihir Joshi", role: "im", hub: "bangalore", linked_user: "", active: "true" },
+  { person_id: "p-ravi", name: "Ravi Patil", role: "fo", hub: "kadapa", linked_user: "", active: "true" },
+];
+const namedCtx: HandoverContext = { ...ctx, people: named, actorPersonId: "p-mihir" };
+const sentNamed = planSend([item("A")], { recipient: "p-ravi", note: "" }, namedCtx);
+assert.equal(sentNamed.events[0].from_person, "Mihir Joshi");
+assert.equal(sentNamed.events[0].to_person, "Ravi Patil");
+assert.equal(sentNamed.events[0].from_id, "p-mihir");
+assert.equal(sentNamed.events[0].to_id, "p-ravi");
+assert.equal(sentNamed.items[0].current_holder, "p-ravi"); // the card row still points at the id
+const recvNamed = planReceive(sentNamed.items, { hub: "bangalore", note: "" }, namedCtx);
+assert.equal(recvNamed.events[0].from_person, "Ravi Patil");
+assert.equal(recvNamed.events[0].to_person, "Mihir Joshi");
+// An admin with no person record is stored by email, in both the name and id columns.
+const adminCtx: HandoverContext = { ...namedCtx, actorPersonId: "sraj@x.com" };
+const byAdmin = planSend([item("A")], { recipient: "p-ravi", note: "" }, adminCtx);
+assert.equal(byAdmin.events[0].from_person, "sraj@x.com");
+assert.equal(byAdmin.events[0].from_id, "sraj@x.com");
+// Sending to a hub names nobody.
+const toHubNamed = planSend([item("A")], { toHub: "kadapa", note: "" }, namedCtx);
+assert.equal(toHubNamed.events[0].to_person, "");
+assert.equal(toHubNamed.events[0].to_id, "");
+
 // Live scan check: what the box shows before saving.
 const known = new Map([["SD-1", "in_stock"], ["SD-2", "traveling"], ["SD-3", "in_stock"]]);
 const sendable = new Set(["in_stock"]);

@@ -1,3 +1,4 @@
+import { displayName } from "./actors";
 import type { Hub, Item, ItemEvent, Person, Role, Status } from "./schema";
 
 export interface HandoverContext {
@@ -84,8 +85,10 @@ export function planSend(targets: Item[], input: SendInput, ctx: HandoverContext
       event_id: ctx.newId("e"),
       item_id: item.item_id,
       action: "check_out",
-      from_person: ctx.actorPersonId,
-      to_person: holder,
+      from_person: displayName(ctx.people, ctx.actorPersonId),
+      to_person: displayName(ctx.people, holder),
+      from_id: ctx.actorPersonId,
+      to_id: holder,
       hub,
       status_after: status,
     };
@@ -125,8 +128,10 @@ export function planReceive(
       event_id: ctx.newId("e"),
       item_id: item.item_id,
       action: "receive",
-      from_person: item.current_holder,
-      to_person: ctx.actorPersonId,
+      from_person: displayName(ctx.people, item.current_holder),
+      to_person: displayName(ctx.people, ctx.actorPersonId),
+      from_id: item.current_holder,
+      to_id: ctx.actorPersonId,
       hub: input.hub,
       status_after: "in_stock",
     };

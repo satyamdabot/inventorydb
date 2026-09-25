@@ -25,6 +25,11 @@ export function actorOptions(people: Person[], users: AppUser[], hubName: (hubId
   return [...ims, ...admins];
 }
 
+/** A person's name for the sheet, so the log reads without lookups. An admin's email stays as it is. */
+export function displayName(people: Person[], id: string): string {
+  return id ? (people.find((p) => p.person_id === id)?.name ?? id) : "";
+}
+
 /** The signed-in user as an actor value: their linked person, or their email if they have none. */
 export function defaultActor(user: { personId?: string; email?: string | null }): string {
   return user.personId || (user.email ?? "").toLowerCase();

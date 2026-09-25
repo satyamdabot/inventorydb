@@ -1,3 +1,4 @@
+import { displayName } from "./actors";
 import {
   STATUSES,
   type Hub,
@@ -97,6 +98,8 @@ export function planCorrection(
         action: "reassign_home_hub",
         from_person: "",
         to_person: "",
+        from_id: "",
+        to_id: "",
         hub: newHome,
         status_after: item.status,
       });
@@ -107,8 +110,10 @@ export function planCorrection(
         event_id: ctx.newId("e"),
         item_id: item.item_id,
         action: "correct",
-        from_person: item.current_holder,
-        to_person: newHolder,
+        from_person: displayName(ctx.people, item.current_holder),
+        to_person: displayName(ctx.people, newHolder),
+        from_id: item.current_holder,
+        to_id: newHolder,
         hub: newHub,
         status_after: status,
       });
