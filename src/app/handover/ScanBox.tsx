@@ -25,11 +25,15 @@ export default function ScanBox({
   items,
   mode,
   rows = 8,
+  hub,
+  hubNames = {},
 }: {
   id: string;
-  items: { id: string; status: Status }[];
+  items: { id: string; status: Status; hub: string }[];
   mode: "send" | "receive";
   rows?: number;
+  hub?: string; // receive only: the hub chosen in "Receiving at"
+  hubNames?: Record<string, string>;
 }) {
   const [text, setText] = useState("");
   const [focused, setFocused] = useState(false);
@@ -39,7 +43,17 @@ export default function ScanBox({
   }, []);
 
   const statuses = useMemo(() => new Map<string, string>(items.map((i) => [i.id, i.status])), [items]);
-  const results = useMemo(() => classifyScans(text, statuses, ALLOWED[mode]), [text, statuses, mode]);
+  const results = useMemo(() => {
+    const placeOf = new Map(items.map((i) => [i.id, i.hub]));
+    return classifyScans(text, statuses, ALLOWED[mode]).map((r) => {
+      // A card sent to a hub must be received at that hub; say so before the form is submitted.
+      const sentTo = placeOf.get(r.code);
+      if (mode === "receive" && hub && r.state === "ok" && r.status === "pending" && sentTo && sentTo !== hub) {
+        return { ...r, state: "wrong" as ScanState, sentTo };
+      }
+      return { ...r, sentTo: undefined };
+    });
+  }, [text, statuses, items, mode, hub]);
   const ok = results.filter((r) => r.state === "ok").length;
   const problems = results.filter((r) => r.state === "wrong" || r.state === "unknown").length;
 
@@ -87,7 +101,10 @@ export default function ScanBox({
               <code>{r.code}</code>
               <span className={styles.msg}>
                 {r.state === "ok" && (STATUS_LABELS[r.status as Status] ?? r.status)}
-                {r.state === "wrong" && `${STATUS_LABELS[r.status as Status] ?? r.status}: ${WRONG_HINT[mode]}`}
+                {r.state === "wrong" &&
+                  (r.sentTo
+                    ? `sent to ${hubNames[r.sentTo] ?? r.sentTo}: switch "Receiving at" to that hub`
+                    : `${STATUS_LABELS[r.status as Status] ?? r.status}: ${WRONG_HINT[mode]}`)}
                 {r.state === "unknown" && `not found (${r.code.length} characters). Check the scanner settings.`}
                 {r.state === "duplicate" && "scanned twice, counted once"}
               </span>

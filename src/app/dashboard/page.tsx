@@ -140,7 +140,15 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
                 <span className={styles.hubName}>{h.name}</span>
                 <span className={styles.hubCount}>{plural(h.held, "card")}</span>
                 <span className={styles.hubMeta}>
-                  {n(h.inStock)} in stock · {n(h.out)} out
+                  {[
+                    `${n(h.byStatus.in_stock)} in stock`,
+                    h.byStatus.pending > 0 && `${n(h.byStatus.pending)} incoming`,
+                    h.byStatus.with_fo > 0 && `${n(h.byStatus.with_fo)} with FO`,
+                    h.byStatus.with_rig > 0 && `${n(h.byStatus.with_rig)} with rig`,
+                    h.byStatus.traveling > 0 && `${n(h.byStatus.traveling)} traveling`,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
                 </span>
                 {h.owned !== h.held && <span className={styles.hubMeta}>Owns {n(h.owned)}</span>}
               </Link>

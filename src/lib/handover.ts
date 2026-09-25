@@ -115,6 +115,16 @@ export function planReceive(
   if (!ctx.hubs.some((h) => h.hub_id === input.hub && h.active !== "false")) plan.errors.push("Choose the receiving hub.");
   const wrong = targets.filter((t) => !RECEIVABLE.has(t.status)).map((t) => `${t.item_id} (${t.status})`);
   if (wrong.length) plan.errors.push(`These cards are not waiting to be received: ${list(wrong)}.`);
+
+  // A card sent to a hub must be received at that hub, otherwise it would silently land in the wrong stock.
+  // (Cards coming back from an IFO, FO or rig team have no fixed hub, so the receiver's hub is used.)
+  const hubName = (id: string) => ctx.hubs.find((h) => h.hub_id === id)?.name ?? id;
+  const elsewhere = targets.filter((t) => t.status === "pending" && t.current_hub !== input.hub);
+  if (elsewhere.length) {
+    plan.errors.push(
+      `Sent to a different hub: ${list(elsewhere.map((t) => `${t.item_id} (to ${hubName(t.current_hub)})`))}. Receive them at that hub, not ${hubName(input.hub)}.`,
+    );
+  }
   if (plan.errors.length) return plan;
 
   if (input.expected !== undefined && input.expected !== targets.length) {

@@ -15,6 +15,7 @@ export interface HubRow {
   held: number;
   inStock: number;
   out: number;
+  byStatus: Record<Status, number>; // what the cards held here are doing
 }
 export interface HolderRow {
   person_id: string;
@@ -100,6 +101,7 @@ export function computeDashboard(
         held: held.length,
         inStock: held.filter((i) => i.status === "in_stock").length,
         out: held.filter((i) => OUT_STATUSES.includes(i.status)).length,
+        byStatus: Object.fromEntries(STATUSES.map((s) => [s, held.filter((i) => i.status === s).length])) as Record<Status, number>,
       };
     })
     .filter((r) => r.owned > 0 || r.held > 0)

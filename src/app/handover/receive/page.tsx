@@ -22,12 +22,24 @@ export default async function ReceivePage({ searchParams }: PageProps<"/handover
   const byOptions = actorOptions(people, users, (id) => hubNames.get(id) ?? id);
   const personName = new Map(people.map((p) => [p.person_id, p.name]));
 
-  // Default to the signed-in IM's own hub, else the central hub.
+  // Cards waiting to be received, per hub they were sent to.
+  const pendingByHub = new Map<string, number>();
+  for (const i of items) if (i.status === "pending") pendingByHub.set(i.current_hub, (pendingByHub.get(i.current_hub) ?? 0) + 1);
+  const busiest = [...pendingByHub.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+
+  // Default: the signed-in IM's own hub. Someone with no hub (an admin) starts where cards are waiting,
+  // else at the central hub.
+  const isActive = (id?: string) => !!id && activeHubs.some((h) => h.hub_id === id);
   const myHub = people.find((p) => p.person_id === user.personId)?.hub;
-  const hub = activeHubs.some((h) => h.hub_id === one(sp.hub))
+  const hub = isActive(one(sp.hub))
     ? one(sp.hub)
-    : (myHub ?? activeHubs.find((h) => h.is_central === "true")?.hub_id ?? activeHubs[0]?.hub_id ?? "");
+    : isActive(myHub)
+      ? myHub!
+      : isActive(busiest)
+        ? busiest!
+        : (activeHubs.find((h) => h.is_central === "true")?.hub_id ?? activeHubs[0]?.hub_id ?? "");
   const pending = items.filter((i) => i.status === "pending" && i.current_hub === hub);
+  const waitingElsewhere = [...pendingByHub.entries()].filter(([id]) => id !== hub);
 
   return (
     <main className={styles.page}>
@@ -53,6 +65,20 @@ export default async function ReceivePage({ searchParams }: PageProps<"/handover
         </select>
         <button type="submit">Change hub</button>
       </form>
+      <p className={styles.muted}>Choose the hub first, then scan. Cards sent to a hub can only be received there.</p>
+      {waitingElsewhere.length > 0 && (
+        <p className={styles.muted}>
+          Also waiting at other hubs:{" "}
+          {waitingElsewhere.map(([id, count], i) => (
+            <span key={id}>
+              {i > 0 && ", "}
+              <Link href={`/handover/receive?${new URLSearchParams({ hub: id })}`}>
+                {hubNames.get(id) ?? id} ({count})
+              </Link>
+            </span>
+          ))}
+        </p>
+      )}
 
       <form action={receiveCards} className={styles.list}>
         <input type="hidden" name="hub" value={hub} />
@@ -83,7 +109,13 @@ export default async function ReceivePage({ searchParams }: PageProps<"/handover
             </tbody>
           </table>
         )}
-        <ScanBox id="scanned" mode="receive" items={items.map((i) => ({ id: i.item_id, status: i.status }))} />
+        <ScanBox
+          id="scanned"
+          mode="receive"
+          hub={hub}
+          hubNames={Object.fromEntries(hubNames)}
+          items={items.map((i) => ({ id: i.item_id, status: i.status, hub: i.current_hub }))}
+        />
         <div className={styles.row}>
           <select name="by" defaultValue={defaultActor(user)} aria-label="Received by" required>
             {byOptions.map((o) => (

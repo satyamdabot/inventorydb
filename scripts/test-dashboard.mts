@@ -53,6 +53,10 @@ assert.deepEqual(d.pending, [{ hub_id: "kadapa", name: "kadapa", count: 1, oldes
 const kadapa = d.hubs.find((h) => h.hub_id === "kadapa")!;
 assert.deepEqual({ owned: kadapa.owned, held: kadapa.held, out: kadapa.out }, { owned: 1, held: 3, out: 3 });
 assert.equal(d.hubs.find((h) => h.hub_id === "bangalore")!.owned, 4);
+// Each hub shows what its cards are doing: Kadapa holds 2 with the FO and 1 incoming (pending).
+assert.equal(kadapa.byStatus.with_fo, 2);
+assert.equal(kadapa.byStatus.pending, 1);
+assert.equal(kadapa.byStatus.in_stock, 0);
 assert.equal(d.hubs.find((h) => h.hub_id === "empty"), undefined);
 
 // Activity: one bucket per day, oldest first, counts by action.

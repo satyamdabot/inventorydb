@@ -95,7 +95,7 @@ assert.equal(back.events[1].from_person, "ifo-amit");
 assert.equal(back.events[0].action, "receive");
 
 // Count mismatch is flagged in the note, not blocked.
-const short = planReceive([item("A", { status: "pending", current_holder: "im-kad" })], { hub: "kadapa", note: "one missing", expected: 3 }, ctx);
+const short = planReceive([item("A", { status: "pending", current_holder: "im-kad", current_hub: "kadapa" })], { hub: "kadapa", note: "one missing", expected: 3 }, ctx);
 assert.equal(short.mismatch, "Mismatch: expected 3, received 1.");
 assert.equal(short.events[0].note, "Mismatch: expected 3, received 1. one missing");
 
@@ -131,6 +131,20 @@ assert.equal(sneaky.events[0].occurred_at, ctx.now);
 
 // Scan text: one per line, duplicates and blanks dropped, ticked ids merged.
 assert.deepEqual(collectIds("SD-1\r\nSD-2\n\nSD-1\n", ["SD-3", "SD-2"]), ["SD-3", "SD-2", "SD-1"]);
+
+// Your exact case: sent to the Kadapa location, then someone receives at Bangalore. Refused, nothing saved.
+const sentToKadapa = planSend([item("A"), item("B")], { toHub: "kadapa", note: "" }, ctx);
+const wrongHub = planReceive(sentToKadapa.items, { hub: "bangalore", note: "" }, ctx);
+assert.match(wrongHub.errors[0], /Sent to a different hub: A \(to kadapa\), B \(to kadapa\)\. Receive them at that hub, not bangalore/);
+assert.equal(wrongHub.events.length, 0);
+assert.equal(wrongHub.items.length, 0);
+// Received at Kadapa it works, and the cards are in stock at Kadapa, ready for the next step there.
+const rightHub = planReceive(sentToKadapa.items, { hub: "kadapa", note: "" }, ctx);
+assert.deepEqual(rightHub.errors, []);
+assert.ok(rightHub.items.every((i) => i.status === "in_stock" && i.current_hub === "kadapa"));
+// Only cards sent TO a hub are tied to it: a card returning from an FO is received wherever the receiver is.
+const fromFo = item("C", { status: "with_fo", current_holder: "fo-ravi", current_hub: "kadapa" });
+assert.deepEqual(planReceive([fromFo], { hub: "bangalore", note: "" }, ctx).errors, []);
 
 // The log stores NAMES in from_person / to_person, and the ids alongside in from_id / to_id.
 const named: Person[] = [

@@ -26,7 +26,7 @@ export default async function SendPage({ searchParams }: PageProps<"/handover/se
     store.list("users"),
     store.list("items"),
   ]);
-  const scanItems = items.map((i) => ({ id: i.item_id, status: i.status }));
+  const scanItems = items.map((i) => ({ id: i.item_id, status: i.status, hub: i.current_hub }));
   const hubName = new Map(hubs.map((h) => [h.hub_id, h.name]));
   const recipients = people.filter((p) => p.active !== "false").sort((a, b) => a.name.localeCompare(b.name));
   const byOptions = actorOptions(people, users, (id) => hubName.get(id) ?? id);
