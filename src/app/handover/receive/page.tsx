@@ -5,6 +5,7 @@ import { one } from "@/lib/labels";
 import { getStore } from "@/lib/store";
 import styles from "../../admin/admin.module.css";
 import { receiveCards } from "../actions";
+import ScanBox from "../ScanBox";
 
 export default async function ReceivePage({ searchParams }: PageProps<"/handover/receive">) {
   const user = await requireRole("admin", "im");
@@ -82,13 +83,7 @@ export default async function ReceivePage({ searchParams }: PageProps<"/handover
             </tbody>
           </table>
         )}
-        <textarea
-          name="scanned"
-          rows={8}
-          autoFocus
-          placeholder="Scan cards here, one per line"
-          className={styles.textarea}
-        />
+        <ScanBox id="scanned" mode="receive" items={items.map((i) => ({ id: i.item_id, status: i.status }))} />
         <div className={styles.row}>
           <select name="by" defaultValue={defaultActor(user)} aria-label="Received by" required>
             {byOptions.map((o) => (

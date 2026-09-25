@@ -6,6 +6,7 @@ import type { Role, Status } from "@/lib/schema";
 import { getStore } from "@/lib/store";
 import styles from "../form.module.css";
 import { sendCards } from "../actions";
+import ScanBox from "../ScanBox";
 
 // The Send to list, grouped so it is easy to scan. What each group means is in the hint under the field.
 const GROUPS: { role: Role; label: string }[] = [
@@ -19,7 +20,13 @@ export default async function SendPage({ searchParams }: PageProps<"/handover/se
   const user = await requireRole("admin", "im");
   const sp = await searchParams;
   const store = getStore();
-  const [people, hubs, users] = await Promise.all([store.list("people"), store.list("hubs"), store.list("users")]);
+  const [people, hubs, users, items] = await Promise.all([
+    store.list("people"),
+    store.list("hubs"),
+    store.list("users"),
+    store.list("items"),
+  ]);
+  const scanItems = items.map((i) => ({ id: i.item_id, status: i.status }));
   const hubName = new Map(hubs.map((h) => [h.hub_id, h.name]));
   const recipients = people.filter((p) => p.active !== "false").sort((a, b) => a.name.localeCompare(b.name));
   const byOptions = actorOptions(people, users, (id) => hubName.get(id) ?? id);
@@ -68,14 +75,7 @@ export default async function SendPage({ searchParams }: PageProps<"/handover/se
             Cards
           </label>
           <div className={styles.control}>
-            <textarea
-              id="scanned"
-              name="scanned"
-              rows={8}
-              autoFocus
-              placeholder="Scan cards here. The scanner types each code and presses Enter."
-              className={styles.textarea}
-            />
+            <ScanBox id="scanned" mode="send" items={scanItems} />
           </div>
         </div>
 

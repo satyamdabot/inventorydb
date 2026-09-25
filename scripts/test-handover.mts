@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { planReceive, planSend, type HandoverContext } from "../src/lib/handover";
-import { collectIds } from "../src/lib/scan";
+import { classifyScans, collectIds } from "../src/lib/scan";
 import type { Hub, Item, Person } from "../src/lib/schema";
 
 const hubs: Hub[] = ["bangalore", "kadapa"].map((id) => ({
@@ -131,5 +131,14 @@ assert.equal(sneaky.events[0].occurred_at, ctx.now);
 
 // Scan text: one per line, duplicates and blanks dropped, ticked ids merged.
 assert.deepEqual(collectIds("SD-1\r\nSD-2\n\nSD-1\n", ["SD-3", "SD-2"]), ["SD-3", "SD-2", "SD-1"]);
+
+// Live scan check: what the box shows before saving.
+const known = new Map([["SD-1", "in_stock"], ["SD-2", "traveling"], ["SD-3", "in_stock"]]);
+const sendable = new Set(["in_stock"]);
+const rows = classifyScans("SD-1\r\nSD-2\nSD-1\n\nSD-9\nSD-3SD-1", known, sendable);
+assert.deepEqual(rows.map((r) => r.state), ["ok", "wrong", "duplicate", "unknown", "unknown"]);
+assert.equal(rows[1].status, "traveling");
+assert.equal(rows[4].code, "SD-3SD-1"); // two scans run together (no Enter after each) is visible as one odd line
+assert.deepEqual(classifyScans("", known, sendable), []);
 
 console.log("handover tests passed");
