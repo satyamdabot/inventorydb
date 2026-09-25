@@ -202,6 +202,70 @@
   color: var(--good);
 }
 
+.tileHint {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+.sectionHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.hubGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: 10px;
+}
+.hubCard {
+  display: grid;
+  gap: 3px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: inherit;
+  text-decoration: none;
+}
+.hubCard:hover,
+.hubCard:focus-visible {
+  outline: 2px solid var(--series-1);
+  outline-offset: 1px;
+}
+.hubCardOn {
+  border-color: var(--series-1);
+  box-shadow: inset 0 0 0 1px var(--series-1);
+}
+.hubName {
+  font-weight: 600;
+}
+.hubCount {
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+.hubMeta {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+
+.attention {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+  font-size: 0.92rem;
+}
+.attention li {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+.attention a {
+  color: var(--text-primary);
+}
+
 .grid2 {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));

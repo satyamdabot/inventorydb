@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { requireRole } from "@/lib/authz";
 import { STATUS_LABELS, one } from "@/lib/labels";
-import { STATUSES } from "@/lib/schema";
+import { STATUSES, type Status } from "@/lib/schema";
 import { getStore } from "@/lib/store";
 import styles from "../admin/admin.module.css";
 import { applyCorrection } from "./actions";
@@ -14,7 +14,8 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
   const isAdmin = user.role === "admin";
   const sp = await searchParams;
   const q = one(sp.q).trim().toLowerCase();
-  const status = one(sp.status);
+  const status = one(sp.status); // one status, or several separated by commas (from dashboard tiles)
+  const statuses = status.split(",").filter(Boolean);
   const hub = one(sp.hub);
   const holder = one(sp.holder);
   const page = Math.max(1, Number(one(sp.page)) || 1);
@@ -26,7 +27,7 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
 
   const matches = items.filter(
     (i) =>
-      (!status || i.status === status) &&
+      (!statuses.length || statuses.includes(i.status)) &&
       (!hub || i.current_hub === hub) &&
       (!holder || i.current_holder === holder) &&
       (!q ||
@@ -100,14 +101,24 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
 
       <form className={styles.row} method="get">
         <input name="q" defaultValue={one(sp.q)} placeholder="Search serial, prism no., brand or model" />
-        <select name="status" defaultValue={status}>
-          <option value="">All statuses</option>
-          {STATUSES.map((s) => (
-            <option key={s} value={s}>
-              {STATUS_LABELS[s]}
-            </option>
-          ))}
-        </select>
+        {statuses.length > 1 ? (
+          <>
+            <input type="hidden" name="status" value={status} />
+            <span className={styles.muted}>
+              Status: {statuses.map((s) => STATUS_LABELS[s as Status] ?? s).join(" or ")} ·{" "}
+              <Link href="/inventory">clear</Link>
+            </span>
+          </>
+        ) : (
+          <select name="status" defaultValue={status}>
+            <option value="">All statuses</option>
+            {STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {STATUS_LABELS[s]}
+              </option>
+            ))}
+          </select>
+        )}
         <select name="hub" defaultValue={hub}>
           <option value="">All hubs</option>
           {sortedHubs.map((h) => (

@@ -1,29 +1,23 @@
 import Link from "next/link";
 import { requireRole } from "@/lib/authz";
 import { computeDashboard } from "@/lib/dashboard";
-import { ROLE_LABELS, STATUS_LABELS, one } from "@/lib/labels";
-import type { Status } from "@/lib/schema";
+import { ROLE_LABELS, one } from "@/lib/labels";
 import { getStore } from "@/lib/store";
-import { ActivityChart, BarList, n } from "./charts";
+import { n } from "./charts";
 import styles from "./dashboard.module.css";
-
-const RANGES = [7, 30, 90];
 
 const inventory = (params: Record<string, string>) => `/inventory?${new URLSearchParams(params)}`;
 const days = (d: number | null) => (d === null ? "—" : d === 0 ? "today" : `${d}d`);
+const plural = (count: number, word: string) => `${n(count)} ${word}${count === 1 ? "" : "s"}`;
 
-// Tiles for the states an admin watches. Problem states carry an icon and a label, never color alone.
-const TILES: { status: Status; icon?: { glyph: string; tone: "critical" | "warning" | "muted" } }[] = [
-  { status: "in_stock" },
-  { status: "with_fo" },
-  { status: "traveling" },
-  { status: "with_rig" },
-  { status: "pending" },
-  { status: "lost", icon: { glyph: "✕", tone: "critical" } },
-  { status: "damaged", icon: { glyph: "▲", tone: "warning" } },
-  { status: "retired", icon: { glyph: "●", tone: "muted" } },
-];
-const TONE = { critical: styles.iconCritical, warning: styles.iconWarning, muted: styles.iconMuted };
+interface Attention {
+  key: string;
+  text: string;
+  href: string;
+  tone: "critical" | "warning" | "info";
+}
+const GLYPH = { critical: "✕", warning: "▲", info: "●" } as const;
+const TONE = { critical: styles.iconCritical, warning: styles.iconWarning, info: styles.iconMuted };
 
 export default async function DashboardPage({ searchParams }: PageProps<"/dashboard">) {
   await requireRole();
@@ -37,21 +31,65 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
   ]);
 
   const hub = hubs.some((h) => h.hub_id === one(sp.hub)) ? one(sp.hub) : "";
-  const range = RANGES.includes(Number(one(sp.days))) ? Number(one(sp.days)) : 30;
-  const d = computeDashboard(items, events, people, hubs, { hub, days: range, now: new Date() });
-  const hubScope: Record<string, string> = hub ? { hub } : {};
-  const scopeName = hub ? (hubs.find((h) => h.hub_id === hub)?.name ?? hub) : "all hubs";
+  const d = computeDashboard(items, events, people, hubs, { hub, days: 30, now: new Date() });
+  const scope: Record<string, string> = hub ? { hub } : {};
+  const hubName = new Map(hubs.map((h) => [h.hub_id, h.name]));
 
-  const statusRows = TILES.map((t) => t.status)
-    .filter((s) => d.byStatus[s] > 0)
-    .sort((a, b) => d.byStatus[b] - d.byStatus[a])
-    .map((s) => ({
-      key: s,
-      label: STATUS_LABELS[s],
-      value: d.byStatus[s],
-      href: inventory({ status: s, ...hubScope }),
-      tip: `${STATUS_LABELS[s]}\n${n(d.byStatus[s])} cards (${((d.byStatus[s] / Math.max(1, d.total)) * 100).toFixed(1)}%)`,
-    }));
+  const s = d.byStatus;
+  const tiles = [
+    { label: "Total cards", value: d.total, hint: hub ? `at ${hubName.get(hub)}` : "across all hubs", href: inventory(scope) },
+    { label: "In stock", value: s.in_stock, hint: "at a hub, ready to send", href: inventory({ status: "in_stock", ...scope }) },
+    { label: "With field officers", value: s.with_fo, hint: "out recording", href: inventory({ status: "with_fo", ...scope }) },
+    { label: "With rig team", value: s.with_rig, hint: "data being collected", href: inventory({ status: "with_rig", ...scope }) },
+    {
+      label: "In transit",
+      value: s.traveling + s.pending,
+      hint: "traveling or waiting to be received",
+      href: inventory({ status: "traveling,pending", ...scope }),
+    },
+    {
+      label: "Lost or damaged",
+      value: s.lost + s.damaged,
+      hint: "need follow-up",
+      href: inventory({ status: "lost,damaged", ...scope }),
+      icon: "critical" as const,
+    },
+  ];
+
+  // Plain sentences about what to look at, most useful first. Empty means all is well.
+  const attention: Attention[] = [];
+  for (const p of d.pending) {
+    attention.push({
+      key: `pending-${p.hub_id}`,
+      text: `${plural(p.count, "card")} waiting to be received at ${p.name}${p.oldestDays ? `, oldest ${p.oldestDays} days` : ""}`,
+      href: `/handover/receive?${new URLSearchParams({ hub: p.hub_id })}`,
+      tone: "warning",
+    });
+  }
+  for (const r of d.longestOut.filter((x) => (x.days ?? 0) > 0).slice(0, 3)) {
+    attention.push({
+      key: `out-${r.item_id}`,
+      text: `${r.item_id} has been out ${r.days} days (${r.holder || "unknown holder"})`,
+      href: `/inventory/${r.item_id}`,
+      tone: "info",
+    });
+  }
+  if (s.lost + s.damaged > 0) {
+    attention.push({
+      key: "problem",
+      text: `${plural(s.lost, "card")} lost, ${plural(s.damaged, "card")} damaged`,
+      href: inventory({ status: "lost,damaged", ...scope }),
+      tone: "critical",
+    });
+  }
+  if (d.inconsistencies.length > 0) {
+    attention.push({
+      key: "mismatch",
+      text: `${plural(d.inconsistencies.length, "card")} don't match their history`,
+      href: "/dashboard/analytics",
+      tone: "critical",
+    });
+  }
 
   return (
     <div className={styles.root}>
@@ -60,119 +98,80 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
           <Link href="/">← Home</Link>
         </p>
         <h1>Dashboard</h1>
+        <p className={styles.muted}>
+          The latest known position of every card. It updates each time cards are sent, received or corrected.
+        </p>
 
-        <form className={styles.filters} method="get">
-          <select name="hub" defaultValue={hub} aria-label="Hub">
-            <option value="">All hubs</option>
-            {[...hubs]
-              .sort((a, b) => a.name.localeCompare(b.name))
-              .map((h) => (
-                <option key={h.hub_id} value={h.hub_id}>
-                  {h.name}
-                </option>
-              ))}
-          </select>
-          <select name="days" defaultValue={String(range)} aria-label="Activity period">
-            {RANGES.map((r) => (
-              <option key={r} value={r}>
-                Activity: last {r} days
-              </option>
-            ))}
-          </select>
-          <button type="submit">Apply</button>
-          {(hub || range !== 30) && (
-            <Link href="/dashboard" className={styles.link}>
-              Reset
+        <section className={styles.tiles} aria-label="Overview">
+          {tiles.map((t) => (
+            <Link key={t.label} href={t.href} className={styles.tile}>
+              <span className={styles.tileLabel}>
+                {t.icon && (
+                  <span className={`${styles.icon} ${styles.iconCritical}`} aria-hidden>
+                    ✕
+                  </span>
+                )}
+                {t.label}
+              </span>
+              <span className={styles.tileValue}>{n(t.value)}</span>
+              <span className={styles.tileHint}>{t.hint}</span>
             </Link>
-          )}
-        </form>
+          ))}
+        </section>
 
-        <section className={styles.card} aria-label="Overview">
-          <div className={styles.hero}>
-            <div>
-              <div className={styles.heroValue}>{n(d.total)}</div>
-              <div className={styles.heroLabel}>
-                {hub ? `cards currently at ${scopeName}` : "cards in total"}
-              </div>
-            </div>
-            <div className={styles.heroSide}>
-              <div>
-                <strong>{n(d.outCount)}</strong>
-                <span>out with someone</span>
-              </div>
-              <div>
-                <strong>{d.avgDaysOut === null ? "—" : d.avgDaysOut.toFixed(1)}</strong>
-                <span>average days out</span>
-              </div>
-            </div>
+        <section className={styles.card} aria-label="Where the cards are">
+          <div className={styles.sectionHead}>
+            <h2>Where the cards are</h2>
+            {hub && (
+              <Link href="/dashboard" className={styles.link}>
+                Show all hubs
+              </Link>
+            )}
           </div>
-          <div className={styles.tiles}>
-            {TILES.map(({ status, icon }) => (
-              <Link key={status} href={inventory({ status, ...hubScope })} className={styles.tile}>
-                <span className={styles.tileLabel}>
-                  {icon && (
-                    <span className={`${styles.icon} ${TONE[icon.tone]}`} aria-hidden>
-                      {icon.glyph}
-                    </span>
-                  )}
-                  {STATUS_LABELS[status]}
+          <p className={styles.muted}>Click a hub to see just its cards in the numbers above.</p>
+          <div className={styles.hubGrid}>
+            {d.hubs.map((h) => (
+              <Link
+                key={h.hub_id}
+                href={h.hub_id === hub ? "/dashboard" : `/dashboard?${new URLSearchParams({ hub: h.hub_id })}`}
+                className={`${styles.hubCard} ${h.hub_id === hub ? styles.hubCardOn : ""}`}
+                aria-current={h.hub_id === hub ? "true" : undefined}
+              >
+                <span className={styles.hubName}>{h.name}</span>
+                <span className={styles.hubCount}>{plural(h.held, "card")}</span>
+                <span className={styles.hubMeta}>
+                  {n(h.inStock)} in stock · {n(h.out)} out
                 </span>
-                <span className={styles.tileValue}>{n(d.byStatus[status])}</span>
+                {h.owned !== h.held && <span className={styles.hubMeta}>Owns {n(h.owned)}</span>}
               </Link>
             ))}
           </div>
         </section>
 
         <div className={styles.grid2}>
-          <section className={styles.card} aria-label="Where cards are now">
-            <h2>Where cards are now</h2>
-            {statusRows.length ? <BarList rows={statusRows} /> : <p className={styles.muted}>No cards.</p>}
+          <section className={styles.card} aria-label="Needs attention">
+            <h2>Needs attention</h2>
+            {attention.length === 0 ? (
+              <p className={styles.ok}>
+                <span className={`${styles.icon} ${styles.iconGood}`} aria-hidden>
+                  ✓
+                </span>{" "}
+                Nothing needs attention right now.
+              </p>
+            ) : (
+              <ul className={styles.attention}>
+                {attention.map((a) => (
+                  <li key={a.key}>
+                    <span className={`${styles.icon} ${TONE[a.tone]}`} aria-hidden>
+                      {GLYPH[a.tone]}
+                    </span>
+                    <Link href={a.href}>{a.text}</Link>
+                  </li>
+                ))}
+              </ul>
+            )}
           </section>
-          <section className={styles.card} aria-label="Cards moved per day">
-            <h2>Cards moved per day</h2>
-            <ActivityChart days={d.activity} />
-          </section>
-        </div>
 
-        {!hub && (
-          <section className={styles.card} aria-label="Cards by hub">
-            <h2>Cards by hub</h2>
-            <p className={styles.muted}>
-              Owned is the home hub. Held is where the card is now. Net is held minus owned: positive means
-              the hub is holding other hubs&apos; cards.
-            </p>
-            <div className={styles.tableScroll}>
-              <table className={styles.table}>
-                <thead>
-                  <tr>
-                    <th>Hub</th>
-                    <th className={styles.num}>Owned</th>
-                    <th className={styles.num}>Held</th>
-                    <th className={styles.num}>In stock</th>
-                    <th className={styles.num}>Out</th>
-                    <th className={styles.num}>Net</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {d.hubs.map((h) => (
-                    <tr key={h.hub_id}>
-                      <td>
-                        <Link href={inventory({ hub: h.hub_id })}>{h.name}</Link>
-                      </td>
-                      <td className={styles.num}>{n(h.owned)}</td>
-                      <td className={styles.num}>{n(h.held)}</td>
-                      <td className={styles.num}>{n(h.inStock)}</td>
-                      <td className={styles.num}>{n(h.out)}</td>
-                      <td className={styles.num}>{h.held - h.owned > 0 ? "+" : ""}{n(h.held - h.owned)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        )}
-
-        <div className={styles.grid2}>
           <section className={styles.card} aria-label="Who has cards">
             <h2>Who has cards</h2>
             {d.holders.length === 0 ? (
@@ -184,11 +183,11 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
                     <tr>
                       <th>Person</th>
                       <th className={styles.num}>Cards</th>
-                      <th className={styles.num}>Oldest</th>
+                      <th className={styles.num}>Longest</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {d.holders.map((h) => (
+                    {d.holders.slice(0, 8).map((h) => (
                       <tr key={h.person_id}>
                         <td>
                           <Link href={inventory({ holder: h.person_id })}>{h.name}</Link>
@@ -203,106 +202,14 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
               </div>
             )}
           </section>
-
-          <section className={styles.card} aria-label="Waiting to be received">
-            <h2>Waiting to be received</h2>
-            {d.pending.length === 0 ? (
-              <p className={styles.muted}>No pending handovers.</p>
-            ) : (
-              <div className={styles.tableScroll}>
-                <table className={styles.table}>
-                  <thead>
-                    <tr>
-                      <th>Receiving hub</th>
-                      <th className={styles.num}>Cards</th>
-                      <th className={styles.num}>Waiting</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {d.pending.map((p) => (
-                      <tr key={p.hub_id}>
-                        <td>
-                          <Link href={`/handover/receive?${new URLSearchParams({ hub: p.hub_id })}`}>{p.name}</Link>
-                        </td>
-                        <td className={styles.num}>{n(p.count)}</td>
-                        <td className={styles.num}>{days(p.oldestDays)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </section>
         </div>
 
-        <section className={styles.card} aria-label="Longest out">
-          <h2>Longest out</h2>
-          <p className={styles.muted}>Cards not in stock, oldest first. Days since their last recorded movement.</p>
-          {d.longestOut.length === 0 ? (
-            <p className={styles.muted}>Nothing is out right now.</p>
-          ) : (
-            <div className={styles.tableScroll}>
-              <table className={styles.table}>
-                <thead>
-                  <tr>
-                    <th>Serial</th>
-                    <th>Status</th>
-                    <th>Holder</th>
-                    <th>Hub</th>
-                    <th className={styles.num}>Days out</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {d.longestOut.map((r) => (
-                    <tr key={r.item_id}>
-                      <td>
-                        <Link href={`/inventory/${r.item_id}`}>{r.item_id}</Link>
-                      </td>
-                      <td>{STATUS_LABELS[r.status]}</td>
-                      <td>{r.holder}</td>
-                      <td>{r.hub}</td>
-                      <td className={styles.num}>{days(r.days)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
-
-        <section className={styles.card} aria-label="Data health">
-          <h2>Data health</h2>
-          {d.inconsistencies.length === 0 ? (
-            <p className={styles.ok}>
-              <span className={`${styles.icon} ${styles.iconGood}`} aria-hidden>
-                ✓
-              </span>{" "}
-              Every card with history matches its latest event.
-            </p>
-          ) : (
-            <div>
-              <p className={styles.warn}>
-                <span className={`${styles.icon} ${styles.iconCritical}`} aria-hidden>
-                  ✕
-                </span>{" "}
-                {d.inconsistencies.length} card(s) don&apos;t match their latest event. Fix them with a correction on
-                the card page.
-              </p>
-              <ul className={styles.list}>
-                {d.inconsistencies.slice(0, 20).map((p) => (
-                  <li key={p.item_id}>
-                    <Link href={`/inventory/${p.item_id}`}>{p.item_id}</Link>: {p.reason}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {d.noHistory > 0 && (
-            <p className={styles.muted}>
-              {n(d.noHistory)} card(s) have no history yet. It starts with their first handover or correction.
-            </p>
-          )}
-        </section>
+        <p className={styles.muted}>
+          <Link href="/dashboard/analytics" className={styles.link}>
+            More analytics
+          </Link>{" "}
+          — cards moved per day, hub owned vs held, longest out, data health.
+        </p>
       </main>
     </div>
   );
