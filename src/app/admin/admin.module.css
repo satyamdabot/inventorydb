@@ -1,0 +1,127 @@
+.page {
+  max-width: 860px;
+  margin: 0 auto;
+  padding: 24px;
+  display: grid;
+  gap: 12px;
+}
+
+.page h1 {
+  margin: 0;
+}
+
+.back {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.muted {
+  margin: 0;
+  color: #666;
+  font-size: 0.9rem;
+}
+
+.error {
+  margin: 0;
+  color: #b3261e;
+}
+
+.list {
+  display: grid;
+  gap: 8px;
+}
+
+.row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.row input[type="text"],
+.row input:not([type]) {
+  padding: 6px 8px;
+  border: 1px solid #c9c9c9;
+  border-radius: 6px;
+  min-width: 0;
+  flex: 1 1 160px;
+}
+
+.row label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.9rem;
+}
+
+.pageWide {
+  composes: page;
+  max-width: 1100px;
+}
+
+.ok {
+  margin: 0;
+  color: #1e6b2f;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.table th,
+.table td {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid #e3e3e3;
+  vertical-align: top;
+}
+
+.facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 4px 16px;
+  margin: 0;
+}
+
+.facts dt {
+  color: #666;
+}
+
+.facts dd {
+  margin: 0;
+}
+
+.factRow {
+  display: contents;
+}
+
+.details {
+  border: 1px solid #d9d9d9;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.details summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.textarea {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid #c9c9c9;
+  border-radius: 6px;
+  font-family: var(--font-geist-mono, monospace);
+  font-size: 0.85rem;
+}
+
+.row button {
+  padding: 6px 14px;
+  border-radius: 6px;
+  border: 1px solid #222;
+  background: #222;
+  color: #fff;
+  cursor: pointer;
+}

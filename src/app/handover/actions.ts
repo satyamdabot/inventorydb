@@ -1,0 +1,74 @@
+"use server";
+
+import { randomUUID } from "node:crypto";
+import { redirect } from "next/navigation";
+import { requireRole } from "@/lib/authz";
+import { planReceive, planSend, type HandoverContext, type HandoverPlan } from "@/lib/handover";
+import type { Item } from "@/lib/schema";
+import { collectIds } from "@/lib/scan";
+import { getStore } from "@/lib/store";
+
+const go = (path: string, params: Record<string, string>) => `${path}?${new URLSearchParams(params)}`;
+
+// Shared by both flows: collect the scanned cards, plan, save all-or-nothing, redirect with the result.
+async function run(
+  formData: FormData,
+  path: string,
+  build: (targets: Item[], ctx: HandoverContext) => HandoverPlan | Promise<HandoverPlan>,
+  summary: (plan: HandoverPlan) => Record<string, string>,
+) {
+  const user = await requireRole("admin", "im");
+  const ids = collectIds(String(formData.get("scanned") ?? ""), formData.getAll("ids").map(String));
+  if (!ids.length) redirect(go(path, { error: "Scan or tick at least one card." }));
+
+  const store = getStore();
+  const [found, hubs, people] = await Promise.all([store.getItemsByIds(ids), store.list("hubs"), store.list("people")]);
+  const missing = ids.filter((id) => !found.has(id));
+  if (missing.length) {
+    const shown = missing.slice(0, 5).join(", ");
+    redirect(go(path, { error: `Not found: ${shown}${missing.length > 5 ? ` and ${missing.length - 5} more` : ""}. Nothing was saved.` }));
+  }
+
+  const plan = await build(
+    ids.map((id) => found.get(id)!),
+    {
+      hubs,
+      people,
+      actorPersonId: user.personId,
+      by: user.email ?? "unknown",
+      now: new Date().toISOString(),
+      newId: (prefix) => `${prefix}-${randomUUID().slice(0, 8)}`,
+    },
+  );
+  if (plan.errors.length) redirect(go(path, { error: `${plan.errors.join(" ")} Nothing was saved.` }));
+
+  await store.commitBatch(plan.events, plan.items);
+  redirect(go(path, { done: String(plan.items.length), ...summary(plan) }));
+}
+
+export async function sendCards(formData: FormData) {
+  const recipient = String(formData.get("recipient") ?? "");
+  const note = String(formData.get("note") ?? "");
+  await run(
+    formData,
+    "/handover/send",
+    (targets, ctx) => planSend(targets, { recipient, note }, ctx),
+    (plan) => ({ status: plan.items[0]?.status ?? "", to: plan.items[0]?.current_holder ?? "" }),
+  );
+}
+
+export async function receiveCards(formData: FormData) {
+  const hub = String(formData.get("hub") ?? "");
+  const note = String(formData.get("note") ?? "");
+  const expectedRaw = String(formData.get("expected") ?? "").trim();
+  const expected = expectedRaw === "" ? undefined : Number(expectedRaw);
+  if (expected !== undefined && (!Number.isInteger(expected) || expected < 0)) {
+    redirect(go("/handover/receive", { error: "Expected count must be a whole number." }));
+  }
+  await run(
+    formData,
+    "/handover/receive",
+    (targets, ctx) => planReceive(targets, { hub, note, expected }, ctx),
+    (plan): Record<string, string> => (plan.mismatch ? { mismatch: plan.mismatch } : {}),
+  );
+}
