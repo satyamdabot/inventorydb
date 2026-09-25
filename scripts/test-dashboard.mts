@@ -1,0 +1,77 @@
+import assert from "node:assert/strict";
+import { computeDashboard } from "../src/lib/dashboard";
+import type { Hub, Item, ItemEvent, Person } from "../src/lib/schema";
+
+const hub = (id: string): Hub => ({ hub_id: id, name: id, city: id, is_central: "false", active: "true" });
+const hubs = [hub("bangalore"), hub("kadapa"), hub("empty")];
+const person = (id: string, role: Person["role"]): Person => ({ person_id: id, name: id, role, hub: "kadapa", linked_user: "", active: "true" });
+const people = [person("fo-ravi", "fo"), person("im-kad", "im")];
+const item = (id: string, over: Partial<Item> = {}): Item => ({
+  item_id: id, item_type: "sd_card", home_hub: "bangalore", current_hub: "bangalore", status: "in_stock",
+  current_holder: "", last_event_id: "", updated_at: "", attributes: "", prism_no: "", brand: "", model: "", ...over,
+});
+const event = (id: string, item_id: string, over: Partial<ItemEvent> = {}): ItemEvent => ({
+  event_id: id, batch_id: "b", item_id, action: "check_out", from_person: "", to_person: "", hub: "kadapa",
+  status_after: "with_fo", occurred_at: "2026-09-20T10:00:00Z", recorded_at: "2026-09-20T10:00:00Z", recorded_by: "x", note: "", ...over,
+});
+const now = new Date("2026-09-25T12:00:00Z");
+
+const items = [
+  item("A"),
+  item("B", { status: "with_fo", current_hub: "kadapa", current_holder: "fo-ravi", last_event_id: "E1" }),
+  item("C", { status: "with_fo", current_hub: "kadapa", current_holder: "fo-ravi", last_event_id: "E2" }),
+  item("D", { status: "pending", current_hub: "kadapa", current_holder: "im-kad", last_event_id: "E3", home_hub: "kadapa" }),
+  item("E", { status: "lost" }),
+];
+const events = [
+  event("E1", "B", { occurred_at: "2026-09-15T10:00:00Z" }),
+  event("E2", "C", { occurred_at: "2026-09-24T10:00:00Z" }),
+  event("E3", "D", { status_after: "pending", occurred_at: "2026-09-25T08:00:00Z" }),
+  event("E4", "A", { action: "receive", status_after: "in_stock", hub: "bangalore", occurred_at: "2026-09-25T09:00:00Z" }),
+  event("E5", "A", { action: "correct", status_after: "in_stock", hub: "bangalore", occurred_at: "2026-09-25T09:30:00Z" }),
+];
+
+const d = computeDashboard(items, events, people, hubs, { hub: "", days: 7, now });
+
+assert.equal(d.total, 5);
+assert.equal(d.byStatus.in_stock, 1);
+assert.equal(d.byStatus.with_fo, 2);
+assert.equal(d.byStatus.pending, 1);
+assert.equal(d.byStatus.lost, 1);
+assert.equal(d.outCount, 3);
+
+// B out 10 days, C out 1 day, D out 0 days.
+assert.equal(d.longestOut[0].item_id, "B");
+assert.equal(d.longestOut[0].days, 10);
+assert.equal(d.avgDaysOut, 11 / 3);
+
+// Holders: Ravi has 2, oldest 10 days. Pending is grouped by destination hub.
+assert.deepEqual(d.holders[0], { person_id: "fo-ravi", name: "fo-ravi", role: "fo", count: 2, oldestDays: 10 });
+assert.deepEqual(d.pending, [{ hub_id: "kadapa", name: "kadapa", count: 1, oldestDays: 0 }]);
+
+// Hub table: owned vs held, hubs with nothing are left out.
+const kadapa = d.hubs.find((h) => h.hub_id === "kadapa")!;
+assert.deepEqual({ owned: kadapa.owned, held: kadapa.held, out: kadapa.out }, { owned: 1, held: 3, out: 3 });
+assert.equal(d.hubs.find((h) => h.hub_id === "bangalore")!.owned, 4);
+assert.equal(d.hubs.find((h) => h.hub_id === "empty"), undefined);
+
+// Activity: one bucket per day, oldest first, counts by action.
+assert.equal(d.activity.length, 7);
+assert.equal(d.activity[0].date, "2026-09-19");
+assert.equal(d.activity[6].date, "2026-09-25");
+assert.deepEqual(d.activity[6], { date: "2026-09-25", sent: 1, received: 1, corrected: 1 });
+assert.equal(d.activity[1].sent, 0); // 2026-09-20: quiet day, still a bucket
+assert.equal(d.activity[5].sent, 1); // 2026-09-24: card C sent
+// The 15th (card B) is outside the 7-day window and is not counted anywhere.
+assert.equal(d.activity.reduce((n, day) => n + day.sent, 0), 2);
+assert.equal(d.noHistory, 1); // card E has no events
+assert.deepEqual(d.inconsistencies.map((p) => p.item_id), ["A"]); // A's row does not point at its last event
+
+// Hub filter scopes current-state numbers and events.
+const k = computeDashboard(items, events, people, hubs, { hub: "kadapa", days: 7, now });
+assert.equal(k.total, 3);
+assert.equal(k.byStatus.in_stock, 0);
+assert.equal(k.activity[6].received, 0);
+assert.equal(k.activity[6].sent, 1);
+
+console.log("dashboard tests passed");

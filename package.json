@@ -11,7 +11,7 @@
     "init:sheet": "node --env-file=.env.local --import tsx scripts/init-sheet.mts",
     "seed:admins": "node --env-file=.env.local --import tsx scripts/seed-admins.mts",
     "seed:hubs": "node --env-file=.env.local --import tsx scripts/seed-hubs.mts",
-    "test": "tsx scripts/smoke.mts && tsx scripts/test-import-people.mts && tsx scripts/test-correction.mts && tsx scripts/test-handover.mts"
+    "test": "tsx scripts/smoke.mts && tsx scripts/test-import-people.mts && tsx scripts/test-correction.mts && tsx scripts/test-handover.mts && tsx scripts/test-dashboard.mts"
   },
   "dependencies": {
     "googleapis": "^182.0.0",

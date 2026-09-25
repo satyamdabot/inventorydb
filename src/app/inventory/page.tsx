@@ -16,6 +16,7 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
   const q = one(sp.q).trim().toLowerCase();
   const status = one(sp.status);
   const hub = one(sp.hub);
+  const holder = one(sp.holder);
   const page = Math.max(1, Number(one(sp.page)) || 1);
 
   const store = getStore();
@@ -27,6 +28,7 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
     (i) =>
       (!status || i.status === status) &&
       (!hub || i.current_hub === hub) &&
+      (!holder || i.current_holder === holder) &&
       (!q ||
         i.item_id.toLowerCase().includes(q) ||
         i.prism_no.toLowerCase().includes(q) ||
@@ -39,7 +41,7 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
   const sortedHubs = [...hubs].sort((a, b) => a.name.localeCompare(b.name));
 
   const pageLink = (p: number) => {
-    const params = new URLSearchParams({ ...(q && { q }), ...(status && { status }), ...(hub && { hub }), page: String(p) });
+    const params = new URLSearchParams({ ...(q && { q }), ...(status && { status }), ...(hub && { hub }), ...(holder && { holder }), page: String(p) });
     return `/inventory?${params}`;
   };
 
@@ -114,7 +116,13 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
             </option>
           ))}
         </select>
+        {holder && <input type="hidden" name="holder" value={holder} />}
         <button type="submit">Filter</button>
+        {holder && (
+          <span className={styles.muted}>
+            Holder: {people.find((p) => p.person_id === holder)?.name ?? holder} · <Link href="/inventory">clear</Link>
+          </span>
+        )}
       </form>
 
       <p className={styles.muted}>

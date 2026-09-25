@@ -15,6 +15,7 @@ export default async function Home({ searchParams }: PageProps<"/">) {
         <p className={styles.muted}>
           Signed in as {user.email} ({user.role})
         </p>
+        <Link href="/dashboard">Dashboard</Link>
         <Link href="/inventory">Inventory</Link>
         {(user.role === "admin" || user.role === "im") && (
           <>
