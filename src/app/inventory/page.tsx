@@ -76,7 +76,8 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
             <td>{i.model}</td>
             <td>{STATUS_LABELS[i.status] ?? i.status}</td>
             <td>{hubName.get(i.current_hub) ?? i.current_hub}</td>
-            <td>{personName.get(i.current_holder) ?? i.current_holder}</td>            <td>{hubName.get(i.home_hub) ?? i.home_hub}</td>
+            <td>{personName.get(i.current_holder) ?? i.current_holder}</td>
+            <td>{hubName.get(i.home_hub) ?? i.home_hub}</td>
           </tr>
         ))}
       </tbody>
