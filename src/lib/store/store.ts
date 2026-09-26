@@ -23,11 +23,23 @@ export class Store {
     return (await this.list("items")).find((i) => i.item_id === itemId);
   }
 
-  /** Returns a map of the requested ids that exist. Missing ids are absent from the map. */
+  /**
+   * Looks up cards by the codes that were typed or scanned, ignoring letter case (a scanner with Caps Lock
+   * on types capitals as lowercase). The map is keyed by the code as requested and holds the stored card,
+   * so callers must use `item.item_id`, not the requested code. Missing codes are absent from the map.
+   */
   async getItemsByIds(ids: string[]) {
-    const wanted = new Set(ids);
-    const found = (await this.list("items")).filter((i) => wanted.has(i.item_id));
-    return new Map(found.map((i) => [i.item_id, i]));
+    const items = await this.list("items");
+    const exact = new Map(items.map((i) => [i.item_id, i]));
+    const byUpper = new Map<string, Item>();
+    for (const i of items) if (!byUpper.has(i.item_id.toUpperCase())) byUpper.set(i.item_id.toUpperCase(), i);
+
+    const found = new Map<string, Item>();
+    for (const id of ids) {
+      const item = exact.get(id) ?? byUpper.get(id.toUpperCase());
+      if (item) found.set(id, item);
+    }
+    return found;
   }
 
   async getHistory(itemId: string) {

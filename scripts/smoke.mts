@@ -64,4 +64,11 @@ const problems = await store.checkConsistency();
 assert.equal(problems.length, 1);
 assert.equal(problems[0].item_id, "SD-00001");
 
+// Lookups by scanned code ignore letter case and return the stored card.
+await store.upsert("items", [item("SD-5471Y1AL61UX")]);
+const byCase = await store.getItemsByIds(["sd-5471y1al61ux", "SD-00001", "sd-nope"]);
+assert.equal(byCase.get("sd-5471y1al61ux")?.item_id, "SD-5471Y1AL61UX");
+assert.equal(byCase.get("SD-00001")?.item_id, "SD-00001"); // exact match still works
+assert.equal(byCase.has("sd-nope"), false);
+
 console.log("smoke test passed");

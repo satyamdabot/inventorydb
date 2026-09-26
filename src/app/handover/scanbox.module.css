@@ -48,6 +48,12 @@
   font-size: 0.85rem;
 }
 
+.caseNote {
+  margin: 0;
+  font-size: 0.82rem;
+  color: #8a5a00;
+}
+
 .list {
   list-style: none;
   margin: 0;

@@ -196,4 +196,13 @@ assert.equal(rows[1].status, "traveling");
 assert.equal(rows[4].code, "SD-3SD-1"); // two scans run together (no Enter after each) is visible as one odd line
 assert.deepEqual(classifyScans("", known, sendable), []);
 
+// Letter case is ignored: a scanner with Caps Lock on types every capital as lowercase.
+const serials = new Map([["SD-5471Y1AL61UX", "in_stock"], ["SD-5367X19716H5", "traveling"]]);
+const lower = classifyScans("sd-5471y1al61ux\nSD-5471Y1AL61UX\nsd-5367x19716h5\ncn0723jgloc002abajraa01", serials, sendable);
+assert.deepEqual(lower.map((r) => r.state), ["ok", "duplicate", "wrong", "unknown"]); // same card in two cases counts once
+assert.equal(lower[0].id, "SD-5471Y1AL61UX"); // resolves to the stored serial
+assert.equal(lower[0].code, "sd-5471y1al61ux"); // and remembers what was typed
+assert.equal(lower[2].status, "traveling");
+assert.equal(lower[3].id, undefined); // a different barcode is still not found
+
 console.log("handover tests passed");

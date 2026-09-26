@@ -48,7 +48,7 @@ export default function ScanBox({
     return classifyScans(text, statuses, ALLOWED[mode]).map((r) => {
       // Say so before submitting when a card is at a different hub than the one chosen: a card sent to a
       // hub must be received there, and cards must be in stock at the hub they are sent from.
-      const sentTo = placeOf.get(r.code);
+      const sentTo = r.id ? placeOf.get(r.id) : undefined;
       const elsewhere = mode === "send" || r.status === "pending";
       if (hub && r.state === "ok" && elsewhere && sentTo && sentTo !== hub) {
         return { ...r, state: "wrong" as ScanState, sentTo };
@@ -95,12 +95,17 @@ export default function ScanBox({
           </button>
         </div>
       )}
+      {results.some((r) => r.id && r.id !== r.code) && (
+        <p className={styles.caseNote}>
+          Some codes arrived in a different letter case, so Caps Lock may be on. They were matched anyway.
+        </p>
+      )}
       {results.length > 0 && (
         <ul className={styles.list} aria-label="Scanned cards">
           {[...results].reverse().map((r, i) => (
             <li key={`${r.code}-${i}`} className={r.state === "ok" ? styles.ok : r.state === "duplicate" ? styles.dup : styles.bad}>
               <span aria-hidden>{MARK[r.state]}</span>
-              <code>{r.code}</code>
+              <code>{r.id ?? r.code}</code>
               <span className={styles.msg}>
                 {r.state === "ok" && (STATUS_LABELS[r.status as Status] ?? r.status)}
                 {r.state === "wrong" &&
@@ -109,7 +114,7 @@ export default function ScanBox({
                       ? `at ${hubNames[r.sentTo] ?? r.sentTo}: choose that hub in "Sending from"`
                       : `sent to ${hubNames[r.sentTo] ?? r.sentTo}: switch "Receiving at" to that hub`
                     : `${STATUS_LABELS[r.status as Status] ?? r.status}: ${WRONG_HINT[mode]}`)}
-                {r.state === "unknown" && `not found (${r.code.length} characters). Check the scanner settings.`}
+                {r.state === "unknown" && `not found in the inventory (${r.code.length} characters): ${r.code}`}
                 {r.state === "duplicate" && "scanned twice, counted once"}
               </span>
             </li>

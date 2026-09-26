@@ -37,8 +37,11 @@ export async function applyCorrection(formData: FormData) {
     redirect(backTo(back, { error: `Not found: ${shown}${missing.length > 5 ? ` and ${missing.length - 5} more` : ""}. Nothing was saved.` }));
   }
 
+  // Two spellings of the same card (SD-1 and sd-1) count once, and the stored serial is what gets used.
+  const targets = [...new Map(ids.map((id) => [found.get(id)!.item_id, found.get(id)!])).values()];
+
   const plan = planCorrection(
-    ids.map((id) => found.get(id)!),
+    targets,
     {
       status: String(formData.get("status") ?? ""),
       hub: String(formData.get("hub") ?? ""),
