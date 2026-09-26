@@ -19,8 +19,8 @@ export interface HandoverPlan {
 
 export interface SendInput {
   fromHub: string; // hub_id the cards are being sent from; every card must be in stock there
-  recipient?: string; // person_id when handing to a person
-  toHub?: string; // hub_id when sending to a hub with no named person
+  recipient: string; // person_id of who the cards are handed to. Always required
+  toHub: string; // hub_id of the location the cards are going to. Always required
   note: string;
 }
 
@@ -31,10 +31,6 @@ const SEND_STATUS: Partial<Record<Role, Status>> = {
   fo: "with_fo",
   rig: "with_rig",
 };
-// Only a card sent to an IM moves to the recipient's hub (it is going there). A card handed to an IFO, FO or
-// rig team member stays at the hub it was sent from, whichever hub that person belongs to.
-const HUB_FROM_RECIPIENT = new Set<Status>(["pending"]);
-
 // Cards an IM can take back into stock.
 const RECEIVABLE = new Set<Status>(["pending", "traveling", "with_fo", "with_rig"]);
 
@@ -54,30 +50,21 @@ function eventBase(ctx: HandoverContext, note: string) {
 }
 
 /**
- * Send in-stock cards to a person (IM = pending, IFO = traveling, FO = with FO, rig = with rig)
- * or to a hub with no named person (pending at that hub, any IM there can receive).
+ * Send in-stock cards to a person AT a location. Both are always required. The person decides the status
+ * (IM = pending, IFO = traveling, FO = with FO, rig = with rig). The location is where the cards are
+ * recorded, whichever hub the person normally belongs to.
  */
 export function planSend(targets: Item[], input: SendInput, ctx: HandoverContext): HandoverPlan {
   const plan: HandoverPlan = { events: [], items: [], errors: [] };
+  const activeHub = (id: string) => ctx.hubs.some((h) => h.hub_id === id && h.active !== "false");
 
-  let status: Status | undefined;
-  let holder = "";
-  let fixedHub = "";
-  if (input.toHub) {
-    if (ctx.hubs.some((h) => h.hub_id === input.toHub && h.active !== "false")) {
-      status = "pending";
-      fixedHub = input.toHub;
-    } else plan.errors.push("Choose an active hub.");
-  } else {
-    const recipient = ctx.people.find((p) => p.person_id === input.recipient && p.active !== "false");
-    status = recipient && SEND_STATUS[recipient.role];
-    if (recipient && status) {
-      holder = recipient.person_id;
-      fixedHub = HUB_FROM_RECIPIENT.has(status) ? recipient.hub : "";
-    } else plan.errors.push("Choose who or where the cards are going.");
-  }
+  const recipient = ctx.people.find((p) => p.person_id === input.recipient && p.active !== "false");
+  const status = recipient && SEND_STATUS[recipient.role];
+  const holder = recipient?.person_id ?? "";
+  if (!recipient || !status) plan.errors.push("Choose the person the cards are going to.");
+  if (!activeHub(input.toHub)) plan.errors.push("Choose the location the cards are going to.");
 
-  if (!ctx.hubs.some((h) => h.hub_id === input.fromHub && h.active !== "false")) {
+  if (!activeHub(input.fromHub)) {
     plan.errors.push("Choose the hub you are sending from.");
   }
   const notInStock = targets.filter((t) => t.status !== "in_stock").map((t) => `${t.item_id} (${t.status})`);
@@ -94,7 +81,7 @@ export function planSend(targets: Item[], input: SendInput, ctx: HandoverContext
 
   const base = eventBase(ctx, input.note.trim());
   for (const item of targets) {
-    const hub = fixedHub || item.current_hub;
+    const hub = input.toHub;
     const event: ItemEvent = {
       ...base,
       event_id: ctx.newId("e"),

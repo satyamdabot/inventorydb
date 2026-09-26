@@ -82,42 +82,6 @@
   font-size: 0.82rem;
 }
 
-/* Person / Location toggle: two hidden radios drive a segmented control and which field is shown. */
-.modeInput {
-  position: absolute;
-  opacity: 0;
-  pointer-events: none;
-}
-.segmented {
-  display: inline-flex;
-  border: 1px solid #c9c9c9;
-  border-radius: 6px;
-  overflow: hidden;
-}
-.segmented label {
-  padding: 8px 18px;
-  cursor: pointer;
-  background: #f2f2f2;
-  color: #222;
-}
-.segmented label + label {
-  border-left: 1px solid #c9c9c9;
-}
-.modePerson:checked ~ .field .segPerson,
-.modeHub:checked ~ .field .segHub {
-  background: #222;
-  color: #fff;
-}
-.modePerson:focus-visible ~ .field .segPerson,
-.modeHub:focus-visible ~ .field .segHub {
-  outline: 2px solid #2a78d6;
-  outline-offset: -2px;
-}
-.modePerson:checked ~ .hubField,
-.modeHub:checked ~ .personField {
-  display: none;
-}
-
 .actions {
   display: flex;
   align-items: center;

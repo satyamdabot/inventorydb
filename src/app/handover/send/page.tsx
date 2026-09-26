@@ -6,8 +6,8 @@ import type { Role, Status } from "@/lib/schema";
 import { getStore } from "@/lib/store";
 import styles from "../form.module.css";
 import { sendCards } from "../actions";
-import PersonPicker from "./PersonPicker";
 import SendScanFields from "./SendScanFields";
+import SendToFields from "./SendToFields";
 
 // The Send to list, grouped so it is easy to scan. What each group means is in the hint under the field.
 const GROUPS: { role: Role; label: string }[] = [
@@ -51,7 +51,7 @@ export default async function SendPage({ searchParams }: PageProps<"/handover/se
     label: g.label,
     people: recipients
       .filter((p) => p.role === g.role)
-      .map((p) => ({ id: p.person_id, label: `${p.name} (${hubName.get(p.hub) ?? p.hub})` })),
+      .map((p) => ({ id: p.person_id, label: `${p.name} (${hubName.get(p.hub) ?? p.hub})`, hub: p.hub })),
   })).filter((g) => g.people.length > 0);
 
   const toPerson = people.find((p) => p.person_id === one(sp.person))?.name ?? one(sp.person);
@@ -66,16 +66,12 @@ export default async function SendPage({ searchParams }: PageProps<"/handover/se
       <h1>Send cards</h1>
       {one(sp.done) && (
         <p className={styles.ok}>
-          Sent {one(sp.done)} card(s) to {toPerson || `${toHubName} hub`}. Status: {status}.
+          Sent {one(sp.done)} card(s) to {toPerson} at {toHubName}. Status: {status}.
         </p>
       )}
       {one(sp.error) && <p className={styles.error}>{one(sp.error)}</p>}
 
       <form action={sendCards} className={styles.form}>
-        {/* The two radios come first so CSS can show the matching field with the sibling selector. */}
-        <input type="radio" name="mode" value="person" id="mode-person" className={`${styles.modeInput} ${styles.modePerson}`} defaultChecked />
-        <input type="radio" name="mode" value="hub" id="mode-hub" className={`${styles.modeInput} ${styles.modeHub}`} />
-
         <div className={styles.field}>
           <label className={styles.label} htmlFor="by">
             Sent by
@@ -113,51 +109,7 @@ export default async function SendPage({ searchParams }: PageProps<"/handover/se
           items={scanItems}
         />
 
-        <div className={styles.field}>
-          <span className={styles.label}>Send to</span>
-          <div className={styles.control}>
-            <div className={styles.segmented}>
-              <label htmlFor="mode-person" className={styles.segPerson}>
-                Person
-              </label>
-              <label htmlFor="mode-hub" className={styles.segHub}>
-                Location
-              </label>
-            </div>
-          </div>
-        </div>
-
-        <div className={`${styles.field} ${styles.personField}`}>
-          <label className={styles.label} htmlFor="recipient">
-            Person
-          </label>
-          <div className={styles.control}>
-            <PersonPicker groups={personGroups} />
-            <p className={styles.hint}>
-              IM: waits to be received at their hub. IFO, FO and rig: the cards stay at the hub you are sending from,
-              whichever hub that person belongs to.
-            </p>
-          </div>
-        </div>
-
-        <div className={`${styles.field} ${styles.hubField}`}>
-          <label className={styles.label} htmlFor="hub">
-            Location
-          </label>
-          <div className={styles.control}>
-            <select id="hub" name="hub" defaultValue="">
-              <option value="" disabled>
-                Select a hub
-              </option>
-              {activeHubs.map((h) => (
-                <option key={h.hub_id} value={h.hub_id}>
-                  {h.name}
-                </option>
-              ))}
-            </select>
-            <p className={styles.hint}>Cards wait at that hub until any IM there receives them.</p>
-          </div>
-        </div>
+        <SendToFields groups={personGroups} hubs={activeHubs.map((h) => ({ id: h.hub_id, name: h.name }))} />
 
         <div className={styles.field}>
           <label className={styles.label} htmlFor="note">

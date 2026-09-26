@@ -38,14 +38,15 @@ const ctxFor = (actor: string): HandoverContext => ({
 });
 const now = () => new Date(Date.UTC(2026, 8, 20, 12));
 const dash = (h = "") => computeDashboard(items, events, people, hubs, { hub: h, days: 30, now: now() });
-const send = (actor: string, to: string) =>
-  commit(planSend(items, { fromHub: items[0].current_hub, recipient: to, note: "" }, ctxFor(actor)));
+// A send names the person and the location. Here the location is where that person works.
+const send = (actor: string, to: string, at: string = items[0].current_hub) =>
+  commit(planSend(items, { fromHub: items[0].current_hub, recipient: to, toHub: at, note: "" }, ctxFor(actor)));
 const receive = (actor: string, at: string) => commit(planReceive(items, { hub: at, note: "" }, ctxFor(actor)));
 const where = () => `${items[0].status}@${items[0].current_hub}/${items[0].current_holder}`;
 
-// 1. Bangalore IM hands the card to the IFO. It is traveling, still recorded at Bangalore.
-send("im-blr", "ifo-amit");
-assert.equal(where(), "traveling@bangalore/ifo-amit");
+// 1. Bangalore IM hands the card to the IFO, going to Hyderabad. It is traveling, recorded at its destination.
+send("im-blr", "ifo-amit", "hyderabad");
+assert.equal(where(), "traveling@hyderabad/ifo-amit");
 assert.equal(dash().byStatus.traveling, 1);
 
 // 2. Hyderabad IM receives it from the IFO. It is now in stock AT HYDERABAD.
@@ -71,8 +72,8 @@ receive("im-hyd", "hyderabad");
 assert.equal(where(), "in_stock@hyderabad/");
 
 // 5. Back to Bangalore with the IFO, then to the rig team, then back into Bangalore stock.
-send("im-hyd", "ifo-amit");
-assert.equal(where(), "traveling@hyderabad/ifo-amit"); // still Hyderabad until Bangalore receives it
+send("im-hyd", "ifo-amit", "bangalore");
+assert.equal(where(), "traveling@bangalore/ifo-amit"); // recorded at Bangalore, where it is heading
 receive("im-blr", "bangalore");
 send("im-blr", "rig-s");
 assert.equal(where(), "with_rig@bangalore/rig-s");

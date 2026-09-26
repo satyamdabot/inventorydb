@@ -75,24 +75,22 @@ async function run(
 }
 
 export async function sendCards(formData: FormData) {
-  // "person" or "hub": only the chosen mode's field is used, the other is ignored.
-  const toHubMode = formData.get("mode") === "hub";
+  // The person and the location are both required; planSend refuses the send if either is missing.
   const input = {
     fromHub: String(formData.get("fromHub") ?? ""),
-    recipient: toHubMode ? "" : String(formData.get("recipient") ?? ""),
-    toHub: toHubMode ? String(formData.get("hub") ?? "") : "",
+    recipient: String(formData.get("recipient") ?? ""),
+    toHub: String(formData.get("hub") ?? ""),
     note: String(formData.get("note") ?? ""),
   };
   await run(
     formData,
     "/handover/send",
     (targets, ctx) => planSend(targets, input, ctx),
-    (plan): Record<string, string> => {
-      const first = plan.items[0];
-      return first?.current_holder
-        ? { status: first.status, person: first.current_holder }
-        : { status: first?.status ?? "", hub: first?.current_hub ?? "" };
-    },
+    (plan): Record<string, string> => ({
+      status: plan.items[0]?.status ?? "",
+      person: plan.items[0]?.current_holder ?? "",
+      hub: plan.items[0]?.current_hub ?? "",
+    }),
   );
 }
 
