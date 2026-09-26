@@ -6,6 +6,7 @@ import { getStore } from "@/lib/store";
 import styles from "../../admin/admin.module.css";
 import { receiveCards } from "../actions";
 import ScanBox from "../ScanBox";
+import HubSelect from "./HubSelect";
 
 export default async function ReceivePage({ searchParams }: PageProps<"/handover/receive">) {
   const user = await requireRole("admin", "im");
@@ -56,14 +57,10 @@ export default async function ReceivePage({ searchParams }: PageProps<"/handover
       {one(sp.error) && <p className={styles.error}>{one(sp.error)}</p>}
 
       <form method="get" className={styles.row}>
-        <select name="hub" defaultValue={hub}>
-          {activeHubs.map((h) => (
-            <option key={h.hub_id} value={h.hub_id}>
-              Receiving at: {h.name}
-            </option>
-          ))}
-        </select>
-        <button type="submit">Change hub</button>
+        <HubSelect hubs={activeHubs.map((h) => ({ id: h.hub_id, name: h.name }))} value={hub} />
+        <noscript>
+          <button type="submit">Change hub</button>
+        </noscript>
       </form>
       <p className={styles.muted}>Choose the hub first, then scan. Cards sent to a hub can only be received there.</p>
       {waitingElsewhere.length > 0 && (
