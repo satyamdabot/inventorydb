@@ -27,60 +27,90 @@ export function countHidden(nodes: HubNode[], showEmpty: boolean): number {
   );
 }
 
-function Row({ node }: { node: HubNode }) {
-  const sub = node.total.held - node.own.held;
+/** One hub as a box: name, cards held (with the hubs under it), a stock bar and the numbers behind it. */
+function Box({ node }: { node: HubNode }) {
+  const t = node.total;
+  const problem = t.byStatus.lost + t.byStatus.damaged;
+  const segments = [
+    { key: "stock", label: "in stock", value: t.inStock, cls: styles.segStock },
+    { key: "out", label: "out with someone", value: t.out, cls: styles.segOut },
+    { key: "problem", label: "lost or damaged", value: problem, cls: styles.segProblem },
+    { key: "retired", label: "retired", value: t.byStatus.retired, cls: styles.segRetired },
+  ].filter((s) => s.value > 0);
+  const inSubHubs = t.held - node.own.held;
+
   return (
-    <span className={styles.treeRow}>
-      <Link href={`/dashboard/hub/${node.hub.hub_id}`} className={styles.treeName}>
+    <Link href={`/dashboard/hub/${node.hub.hub_id}`} className={styles.orgBox}>
+      <span className={styles.orgName}>
         {node.hub.name}
         {node.hub.is_central === "true" && <span className={styles.treeTag}>main hub</span>}
         {node.hub.active === "false" && <span className={styles.treeTag}>inactive</span>}
-      </Link>
-      <span className={styles.treeCount}>{n(node.total.held)} cards</span>
-      <span className={styles.treeMeta}>
-        {breakdown(node.total)}
-        {node.children.length > 0 && ` · ${n(node.own.held)} here, ${n(sub)} in sub-hubs`}
       </span>
-    </span>
+      <span className={styles.orgCount}>
+        {n(t.held)} <small>{t.held === 1 ? "card" : "cards"}</small>
+      </span>
+      {t.held > 0 && (
+        <span
+          className={styles.orgBar}
+          role="img"
+          aria-label={segments.map((s) => `${n(s.value)} ${s.label}`).join(", ")}
+        >
+          {segments.map((s) => (
+            <i key={s.key} className={s.cls} style={{ flexGrow: s.value }} />
+          ))}
+        </span>
+      )}
+      <span className={styles.orgMeta}>
+        {n(t.inStock)} in stock · {n(t.out)} out
+      </span>
+      {node.children.length > 0 && (
+        <span className={styles.orgMeta}>
+          {n(node.own.held)} here · {n(inSubHubs)} in sub-hubs
+        </span>
+      )}
+    </Link>
   );
 }
 
-function TreeNode({ node, depth, showEmpty }: { node: HubNode; depth: number; showEmpty: boolean }) {
-  const children = node.children.filter((c) => isVisible(c, showEmpty));
-  if (children.length === 0) {
-    return (
-      <div className={styles.treeLeaf}>
-        <Row node={node} />
-      </div>
-    );
-  }
+function Level({ nodes, showEmpty }: { nodes: HubNode[]; showEmpty: boolean }) {
+  const shown = nodes.filter((node) => isVisible(node, showEmpty));
+  if (shown.length === 0) return null;
   return (
-    <details className={styles.treeNode} open={depth < 1}>
-      <summary>
-        <Row node={node} />
-      </summary>
-      <ul className={styles.treeChildren}>
-        {children.map((c) => (
-          <li key={c.hub.hub_id}>
-            <TreeNode node={c} depth={depth + 1} showEmpty={showEmpty} />
-          </li>
-        ))}
-      </ul>
-    </details>
-  );
-}
-
-/** The hub hierarchy: a top-level hub with the hubs under it, each showing its stock. Click a name for details. */
-export function HubTreeView({ roots, showEmpty }: { roots: HubNode[]; showEmpty: boolean }) {
-  return (
-    <ul className={styles.tree}>
-      {roots
-        .filter((r) => isVisible(r, showEmpty))
-        .map((r) => (
-          <li key={r.hub.hub_id}>
-            <TreeNode node={r} depth={0} showEmpty={showEmpty} />
-          </li>
-        ))}
+    <ul>
+      {shown.map((node) => (
+        <li key={node.hub.hub_id}>
+          <Box node={node} />
+          <Level nodes={node.children} showEmpty={showEmpty} />
+        </li>
+      ))}
     </ul>
+  );
+}
+
+const LEGEND = [
+  { label: "In stock", cls: styles.segStock },
+  { label: "Out with someone", cls: styles.segOut },
+  { label: "Lost or damaged", cls: styles.segProblem },
+  { label: "Retired", cls: styles.segRetired },
+];
+
+/** The hub hierarchy as a tree chart: the main hub at the top, the hubs under it below, joined by lines. */
+export function HubOrgChart({ roots, showEmpty }: { roots: HubNode[]; showEmpty: boolean }) {
+  return (
+    <>
+      <div className={styles.orgScroll}>
+        <div className={styles.org}>
+          <Level nodes={roots} showEmpty={showEmpty} />
+        </div>
+      </div>
+      <div className={styles.legend} aria-label="Bar colors">
+        {LEGEND.map((l) => (
+          <span key={l.label}>
+            <i className={`${styles.swatch} ${l.cls}`} />
+            {l.label}
+          </span>
+        ))}
+      </div>
+    </>
   );
 }
