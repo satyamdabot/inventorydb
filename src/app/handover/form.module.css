@@ -60,6 +60,22 @@
   font-family: var(--font-geist-mono, monospace);
   font-size: 0.9rem;
 }
+/* Category list and person list side by side; they wrap onto two lines on a narrow screen. */
+.control .pair {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.control .pair select {
+  flex: 1 1 200px;
+  width: auto;
+  max-width: 320px;
+}
+.control .pair select:disabled {
+  color: #888;
+  background: #f5f5f5;
+}
+
 .hint {
   margin: 0;
   color: #666;

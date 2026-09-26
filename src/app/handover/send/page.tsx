@@ -6,6 +6,7 @@ import type { Role, Status } from "@/lib/schema";
 import { getStore } from "@/lib/store";
 import styles from "../form.module.css";
 import { sendCards } from "../actions";
+import PersonPicker from "./PersonPicker";
 import SendScanFields from "./SendScanFields";
 
 // The Send to list, grouped so it is easy to scan. What each group means is in the hint under the field.
@@ -43,6 +44,15 @@ export default async function SendPage({ searchParams }: PageProps<"/handover/se
     : isActive(fullest)
       ? fullest!
       : (activeHubs.find((h) => h.is_central === "true")?.hub_id ?? activeHubs[0]?.hub_id ?? "");
+
+  // Categories with the people in each, for the two-step picker. Empty categories are left out.
+  const personGroups = GROUPS.map((g) => ({
+    role: g.role,
+    label: g.label,
+    people: recipients
+      .filter((p) => p.role === g.role)
+      .map((p) => ({ id: p.person_id, label: `${p.name} (${hubName.get(p.hub) ?? p.hub})` })),
+  })).filter((g) => g.people.length > 0);
 
   const toPerson = people.find((p) => p.person_id === one(sp.person))?.name ?? one(sp.person);
   const toHubName = hubName.get(one(sp.hub)) ?? one(sp.hub);
@@ -122,23 +132,7 @@ export default async function SendPage({ searchParams }: PageProps<"/handover/se
             Person
           </label>
           <div className={styles.control}>
-            <select id="recipient" name="recipient" defaultValue="">
-              <option value="" disabled>
-                Select a person
-              </option>
-              {GROUPS.map((g) => {
-                const inGroup = recipients.filter((p) => p.role === g.role);
-                return inGroup.length ? (
-                  <optgroup key={g.role} label={g.label}>
-                    {inGroup.map((p) => (
-                      <option key={p.person_id} value={p.person_id}>
-                        {p.name} ({hubName.get(p.hub) ?? p.hub})
-                      </option>
-                    ))}
-                  </optgroup>
-                ) : null;
-              })}
-            </select>
+            <PersonPicker groups={personGroups} />
             <p className={styles.hint}>
               IM: waits to be received at their hub. IFO, FO and rig: the cards stay at the hub you are sending from,
               whichever hub that person belongs to.
