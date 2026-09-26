@@ -1,4 +1,4 @@
-import type { AppUser, Person } from "./schema";
+import type { AppUser, Person, Role } from "./schema";
 
 export interface ActorOption {
   value: string; // an IM's person_id, or an admin's email
@@ -33,6 +33,19 @@ export function displayName(people: Person[], id: string): string {
 /** The signed-in user as an actor value: their linked person, or their email if they have none. */
 export function defaultActor(user: { personId?: string; email?: string | null }): string {
   return user.personId || (user.email ?? "").toLowerCase();
+}
+
+/**
+ * Who this user may record a handover as. An admin can pick anyone on the list and act on their behalf.
+ * Everyone else is tied to their own linked IM record, whatever the form says.
+ */
+export function allowedActors(
+  user: { role: Role; personId?: string; email?: string | null },
+  options: ActorOption[],
+): ActorOption[] {
+  if (user.role === "admin") return options;
+  const mine = defaultActor(user);
+  return options.filter((o) => o.value === mine);
 }
 
 /** The value if it is one of the allowed options, otherwise undefined. */

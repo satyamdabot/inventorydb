@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { actorOptions, defaultActor } from "@/lib/actors";
+import { actorOptions, allowedActors, defaultActor } from "@/lib/actors";
 import { requireRole } from "@/lib/authz";
 import { STATUS_LABELS, one } from "@/lib/labels";
 import type { Role, Status } from "@/lib/schema";
@@ -29,7 +29,7 @@ export default async function SendPage({ searchParams }: PageProps<"/handover/se
   const scanItems = items.map((i) => ({ id: i.item_id, status: i.status, hub: i.current_hub }));
   const hubName = new Map(hubs.map((h) => [h.hub_id, h.name]));
   const recipients = people.filter((p) => p.active !== "false").sort((a, b) => a.name.localeCompare(b.name));
-  const byOptions = actorOptions(people, users, (id) => hubName.get(id) ?? id);
+  const byOptions = allowedActors(user, actorOptions(people, users, (id) => hubName.get(id) ?? id));
   const activeHubs = hubs.filter((h) => h.active !== "false").sort((a, b) => a.name.localeCompare(b.name));
 
   // Start at the IM's own hub. Someone with no hub (an admin) starts where most cards are in stock.
@@ -71,14 +71,29 @@ export default async function SendPage({ searchParams }: PageProps<"/handover/se
             Sent by
           </label>
           <div className={styles.control}>
-            <select id="by" name="by" defaultValue={defaultActor(user)} required>
-              {byOptions.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-            <p className={styles.hint}>Defaults to you. Your own sign-in is always saved on the record as well.</p>
+            {user.role === "admin" ? (
+              <>
+                <select id="by" name="by" defaultValue={defaultActor(user)} required>
+                  {byOptions.map((o) => (
+                    <option key={o.value} value={o.value}>
+                      {o.label}
+                    </option>
+                  ))}
+                </select>
+                <p className={styles.hint}>
+                  As an admin you can send on behalf of anyone. Your own sign-in is always saved on the record too.
+                </p>
+              </>
+            ) : byOptions.length ? (
+              <>
+                <strong id="by">{byOptions[0].label}</strong>
+                <p className={styles.hint}>Handovers are recorded under your name.</p>
+              </>
+            ) : (
+              <p className={styles.error}>
+                Your login is not linked to an active IM, so you can&apos;t send yet. Ask an admin to link you on the Users screen.
+              </p>
+            )}
           </div>
         </div>
 

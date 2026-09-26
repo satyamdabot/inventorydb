@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { actorOptions, defaultActor } from "@/lib/actors";
+import { actorOptions, allowedActors, defaultActor } from "@/lib/actors";
 import { requireRole } from "@/lib/authz";
 import { one } from "@/lib/labels";
 import { getStore } from "@/lib/store";
@@ -19,7 +19,7 @@ export default async function ReceivePage({ searchParams }: PageProps<"/handover
   ]);
   const activeHubs = hubs.filter((h) => h.active !== "false").sort((a, b) => a.name.localeCompare(b.name));
   const hubNames = new Map(hubs.map((h) => [h.hub_id, h.name]));
-  const byOptions = actorOptions(people, users, (id) => hubNames.get(id) ?? id);
+  const byOptions = allowedActors(user, actorOptions(people, users, (id) => hubNames.get(id) ?? id));
   const personName = new Map(people.map((p) => [p.person_id, p.name]));
 
   // Cards waiting to be received, per hub they were sent to.
@@ -117,13 +117,21 @@ export default async function ReceivePage({ searchParams }: PageProps<"/handover
           items={items.map((i) => ({ id: i.item_id, status: i.status, hub: i.current_hub }))}
         />
         <div className={styles.row}>
-          <select name="by" defaultValue={defaultActor(user)} aria-label="Received by" required>
-            {byOptions.map((o) => (
-              <option key={o.value} value={o.value}>
-                Received by: {o.label}
-              </option>
-            ))}
-          </select>
+          {user.role === "admin" ? (
+            <select name="by" defaultValue={defaultActor(user)} aria-label="Received by" required>
+              {byOptions.map((o) => (
+                <option key={o.value} value={o.value}>
+                  Received by: {o.label}
+                </option>
+              ))}
+            </select>
+          ) : byOptions.length ? (
+            <span>
+              Received by: <strong>{byOptions[0].label}</strong>
+            </span>
+          ) : (
+            <span className={styles.error}>Your login is not linked to an active IM. Ask an admin to link you.</span>
+          )}
           <input name="expected" type="number" min="0" placeholder="Expected count (optional)" />
           <input name="note" placeholder="Note (optional)" />
           <button type="submit">Receive cards</button>

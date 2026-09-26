@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { actorOptions, defaultActor, resolveActor } from "../src/lib/actors";
+import { actorOptions, allowedActors, defaultActor, resolveActor } from "../src/lib/actors";
 import type { AppUser, Person } from "../src/lib/schema";
 
 const person = (id: string, name: string, role: Person["role"], active = "true"): Person => ({
@@ -36,5 +36,20 @@ assert.equal(defaultActor({ personId: "", email: "Sraj@X.com" }), "sraj@x.com");
 assert.equal(resolveActor("p-mihir", options), "p-mihir");
 assert.equal(resolveActor("p-ravi", options), undefined);
 assert.equal(resolveActor("", options), undefined);
+
+// Admins may act as anyone on the list. An IM may only act as themselves.
+const admin = { role: "admin" as const, personId: "", email: "Sraj@x.com" };
+assert.deepEqual(allowedActors(admin, options).map((o) => o.value), ["p-asha", "p-mihir", "sraj@x.com"]);
+
+const mihir = { role: "im" as const, personId: "p-mihir", email: "mihir@x.com" };
+assert.deepEqual(allowedActors(mihir, options).map((o) => o.value), ["p-mihir"]);
+// The form can ask for someone else, but the allowed list is what the server checks against.
+assert.equal(resolveActor("p-asha", allowedActors(mihir, options)), undefined);
+assert.equal(resolveActor("sraj@x.com", allowedActors(mihir, options)), undefined);
+assert.equal(resolveActor("p-mihir", allowedActors(mihir, options)), "p-mihir");
+
+// An IM whose login is not linked to a person, or linked to someone inactive, gets no options at all.
+assert.deepEqual(allowedActors({ role: "im", personId: "", email: "new@x.com" }, options), []);
+assert.deepEqual(allowedActors({ role: "im", personId: "p-old", email: "old@x.com" }, options), []);
 
 console.log("actors tests passed");

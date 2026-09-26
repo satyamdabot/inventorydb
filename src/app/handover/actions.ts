@@ -2,7 +2,7 @@
 
 import { randomUUID } from "node:crypto";
 import { redirect } from "next/navigation";
-import { actorOptions, defaultActor, resolveActor } from "@/lib/actors";
+import { actorOptions, allowedActors, defaultActor, resolveActor } from "@/lib/actors";
 import { requireRole } from "@/lib/authz";
 import { planReceive, planSend, type HandoverContext, type HandoverPlan } from "@/lib/handover";
 import type { Item } from "@/lib/schema";
@@ -30,13 +30,23 @@ async function run(
     store.list("users"),
   ]);
 
-  // Who is recording the handover (Sent by / Received by). The signed-in account is saved separately.
+  // Who is recording the handover (Sent by / Received by). Only an admin may name someone else; anyone
+  // else is always recorded as themselves, whatever the form says. The signed-in account is saved separately.
   const hubName = new Map(hubs.map((h) => [h.hub_id, h.name]));
+  const isAdmin = user.role === "admin";
   const actor = resolveActor(
-    String(formData.get("by") ?? "") || defaultActor(user),
-    actorOptions(people, users, (id) => hubName.get(id) ?? id),
+    isAdmin ? String(formData.get("by") ?? "") || defaultActor(user) : defaultActor(user),
+    allowedActors(user, actorOptions(people, users, (id) => hubName.get(id) ?? id)),
   );
-  if (!actor) redirect(go(path, { error: "Choose an IM or admin for who is recording this handover." }));
+  if (!actor) {
+    redirect(
+      go(path, {
+        error: isAdmin
+          ? "Choose an IM or admin for who is recording this handover."
+          : "Your login is not linked to an active IM. Ask an admin to link you on the Users screen.",
+      }),
+    );
+  }
 
   const missing = ids.filter((id) => !found.has(id));
   if (missing.length) {
