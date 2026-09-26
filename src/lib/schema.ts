@@ -34,7 +34,7 @@ export const TABS = {
     "from_hub", // the hub the card was at before this step (`hub` is where it is after)
   ],
   people: ["person_id", "name", "role", "hub", "linked_user", "active"],
-  hubs: ["hub_id", "name", "city", "is_central", "active"],
+  hubs: ["hub_id", "name", "city", "is_central", "active", "parent_hub"], // parent_hub: the hub this one sits under, blank for a top-level hub
   item_types: ["type", "fields"],
   users: ["email", "role", "person_id", "active"],
   status_limits: ["status", "max_days"],
@@ -123,6 +123,7 @@ export interface Hub extends Row {
   city: string;
   is_central: string;
   active: string;
+  parent_hub: string;
 }
 
 export interface AppUser extends Row {

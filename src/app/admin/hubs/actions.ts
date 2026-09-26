@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireRole } from "@/lib/authz";
+import { wouldCreateCycle } from "@/lib/hub-tree";
 import { slugify } from "@/lib/slug";
 import { getStore } from "@/lib/store";
 
@@ -21,9 +22,12 @@ export async function addHub(formData: FormData) {
 
   const hub_id = slugify(parsed.data.name);
   const store = getStore();
-  if (!hub_id || (await store.list("hubs")).some((h) => h.hub_id === hub_id)) {
-    redirect("/admin/hubs?error=exists");
-  }
+  const hubs = await store.list("hubs");
+  if (!hub_id || hubs.some((h) => h.hub_id === hub_id)) redirect("/admin/hubs?error=exists");
+
+  const parent = String(formData.get("parent") ?? "");
+  if (parent && !hubs.some((h) => h.hub_id === parent)) redirect("/admin/hubs?error=invalid");
+
   await store.upsert("hubs", [
     {
       hub_id,
@@ -31,6 +35,7 @@ export async function addHub(formData: FormData) {
       city: parsed.data.city || parsed.data.name,
       is_central: flag(formData.get("is_central")),
       active: "true",
+      parent_hub: parent,
     },
   ]);
   revalidatePath("/admin/hubs");
@@ -44,14 +49,29 @@ export async function saveHub(formData: FormData) {
   if (!hub_id || !parsed.success) redirect("/admin/hubs?error=invalid");
 
   const store = getStore();
-  if (!(await store.list("hubs")).some((h) => h.hub_id === hub_id)) redirect("/admin/hubs?error=invalid");
+  const hubs = await store.list("hubs");
+  if (!hubs.some((h) => h.hub_id === hub_id)) redirect("/admin/hubs?error=invalid");
+
+  // The parent must exist, and can't be the hub itself or one of the hubs under it.
+  const parent = String(formData.get("parent") ?? "");
+  if (parent && !hubs.some((h) => h.hub_id === parent)) redirect("/admin/hubs?error=invalid");
+  if (parent && wouldCreateCycle(hubs, hub_id, parent)) redirect("/admin/hubs?error=loop");
+
+  // A hub that still holds cards can't be switched off, or those cards would vanish from the send list.
+  const active = flag(formData.get("active"));
+  if (active === "false") {
+    const stillHolds = (await store.list("items")).filter((i) => i.current_hub === hub_id).length;
+    if (stillHolds > 0) redirect(`/admin/hubs?error=hascards&n=${stillHolds}`);
+  }
+
   await store.upsert("hubs", [
     {
       hub_id,
       name: parsed.data.name,
       city: parsed.data.city || parsed.data.name,
       is_central: flag(formData.get("is_central")),
-      active: flag(formData.get("active")),
+      active,
+      parent_hub: parent,
     },
   ]);
   revalidatePath("/admin/hubs");

@@ -1,12 +1,12 @@
-import assert from "node:assert/strict";
+﻿import assert from "node:assert/strict";
 import { parseTable } from "../src/lib/csv";
 import { planPeopleImport } from "../src/lib/import-people";
 import type { Hub, Person } from "../src/lib/schema";
 
 const hubs: Hub[] = [
-  { hub_id: "bangalore", name: "Bangalore", city: "Bangalore", is_central: "true", active: "true" },
-  { hub_id: "kadapa-2", name: "Kadapa-2", city: "Kadapa", is_central: "false", active: "true" },
-  { hub_id: "salem", name: "Salem", city: "Salem", is_central: "false", active: "false" },
+  { hub_id: "bangalore", name: "Bangalore", city: "Bangalore", is_central: "true", active: "true", parent_hub: "" },
+  { hub_id: "kadapa-2", name: "Kadapa-2", city: "Kadapa", is_central: "false", active: "true", parent_hub: "" },
+  { hub_id: "salem", name: "Salem", city: "Salem", is_central: "false", active: "false", parent_hub: "" },
 ];
 const existing: Person[] = [
   { person_id: "p-old", name: "Rahul Kumar", role: "im", hub: "bangalore", linked_user: "", active: "true" },

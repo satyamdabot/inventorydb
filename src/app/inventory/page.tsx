@@ -16,7 +16,8 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
   const q = one(sp.q).trim().toLowerCase();
   const status = one(sp.status); // one status, or several separated by commas (from dashboard tiles)
   const statuses = status.split(",").filter(Boolean);
-  const hub = one(sp.hub);
+  const hub = one(sp.hub); // one hub, or several separated by commas (a hub and the hubs under it)
+  const hubIds = hub.split(",").filter(Boolean);
   const holder = one(sp.holder);
   const page = Math.max(1, Number(one(sp.page)) || 1);
 
@@ -28,8 +29,9 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
   const matches = items.filter(
     (i) =>
       (!statuses.length || statuses.includes(i.status)) &&
-      (!hub || i.current_hub === hub) &&
-      (!holder || i.current_holder === holder) &&      (!q ||
+      (!hubIds.length || hubIds.includes(i.current_hub)) &&
+      (!holder || i.current_holder === holder) &&
+      (!q ||
         i.item_id.toLowerCase().includes(q) ||
         i.prism_no.toLowerCase().includes(q) ||
         i.brand.toLowerCase().includes(q) ||
@@ -118,14 +120,23 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
             ))}
           </select>
         )}
-        <select name="hub" defaultValue={hub}>
-          <option value="">All hubs</option>
-          {sortedHubs.map((h) => (
-            <option key={h.hub_id} value={h.hub_id}>
-              {h.name}
-            </option>
-          ))}
-        </select>
+        {hubIds.length > 1 ? (
+          <>
+            <input type="hidden" name="hub" value={hub} />
+            <span className={styles.muted}>
+              Hubs: {hubIds.map((id) => hubName.get(id) ?? id).join(", ")} · <Link href="/inventory">clear</Link>
+            </span>
+          </>
+        ) : (
+          <select name="hub" defaultValue={hub}>
+            <option value="">All hubs</option>
+            {sortedHubs.map((h) => (
+              <option key={h.hub_id} value={h.hub_id}>
+                {h.name}
+              </option>
+            ))}
+          </select>
+        )}
         {holder && <input type="hidden" name="holder" value={holder} />}
         <button type="submit">Filter</button>
         {holder && (

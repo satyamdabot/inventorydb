@@ -4,6 +4,7 @@ import { OUT_STATUSES, STATUSES, type Hub, type Item, type ItemEvent, type Perso
 
 export interface DashboardOptions {
   hub: string; // hub_id to scope current-state numbers to, "" for all hubs
+  scope?: string[]; // several hub_ids at once (a hub and the hubs under it). Takes the place of `hub`.
   days: number; // length of the activity window
   now: Date;
 }
@@ -70,7 +71,8 @@ export function computeDashboard(
   hubs: Hub[],
   opts: DashboardOptions,
 ): Dashboard {
-  const scoped = opts.hub ? items.filter((i) => i.current_hub === opts.hub) : items;
+  const inScope = opts.scope ? new Set(opts.scope) : opts.hub ? new Set([opts.hub]) : undefined;
+  const scoped = inScope ? items.filter((i) => inScope.has(i.current_hub)) : items;
   const hubName = new Map(hubs.map((h) => [h.hub_id, h.name]));
   const personById = new Map(people.map((p) => [p.person_id, p]));
 
@@ -152,7 +154,7 @@ export function computeDashboard(
     index.set(day.date, day);
   }
   for (const e of events) {
-    if (opts.hub && e.hub !== opts.hub) continue;
+    if (inScope && !inScope.has(e.hub)) continue;
     const at = Date.parse(e.occurred_at);
     const day = Number.isNaN(at) ? undefined : index.get(dateKey(new Date(at)));
     if (!day) continue;

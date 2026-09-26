@@ -3,7 +3,9 @@ import { requireRole } from "@/lib/authz";
 import { computeDashboard } from "@/lib/dashboard";
 import { ROLE_LABELS, one } from "@/lib/labels";
 import { getStore } from "@/lib/store";
+import { buildHubTree } from "@/lib/hub-tree";
 import { n } from "./charts";
+import { HubTreeView, countHidden } from "./hub-tree-view";
 import styles from "./dashboard.module.css";
 
 const inventory = (params: Record<string, string>) => `/inventory?${new URLSearchParams(params)}`;
@@ -34,6 +36,9 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
   const d = computeDashboard(items, events, people, hubs, { hub, days: 30, now: new Date() });
   const scope: Record<string, string> = hub ? { hub } : {};
   const hubName = new Map(hubs.map((h) => [h.hub_id, h.name]));
+  const tree = buildHubTree(hubs, items);
+  const showEmpty = one(sp.empty) === "1";
+  const hiddenEmpty = countHidden(tree, false);
 
   const s = d.byStatus;
   const tiles = [
@@ -128,32 +133,26 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
               </Link>
             )}
           </div>
-          <p className={styles.muted}>Click a hub to see just its cards in the numbers above.</p>
-          <div className={styles.hubGrid}>
-            {d.hubs.map((h) => (
-              <Link
-                key={h.hub_id}
-                href={h.hub_id === hub ? "/dashboard" : `/dashboard?${new URLSearchParams({ hub: h.hub_id })}`}
-                className={`${styles.hubCard} ${h.hub_id === hub ? styles.hubCardOn : ""}`}
-                aria-current={h.hub_id === hub ? "true" : undefined}
-              >
-                <span className={styles.hubName}>{h.name}</span>
-                <span className={styles.hubCount}>{plural(h.held, "card")}</span>
-                <span className={styles.hubMeta}>
-                  {[
-                    `${n(h.byStatus.in_stock)} in stock`,
-                    h.byStatus.pending > 0 && `${n(h.byStatus.pending)} incoming`,
-                    h.byStatus.with_fo > 0 && `${n(h.byStatus.with_fo)} with FO`,
-                    h.byStatus.with_rig > 0 && `${n(h.byStatus.with_rig)} with rig`,
-                    h.byStatus.traveling > 0 && `${n(h.byStatus.traveling)} traveling`,
-                  ]
-                    .filter(Boolean)
-                    .join(" · ")}
-                </span>
-                {h.owned !== h.held && <span className={styles.hubMeta}>Owns {n(h.owned)}</span>}
+          <p className={styles.muted}>
+            Each hub shows the cards it holds, including the hubs under it. Click a hub name for everything about
+            it, or the arrow to open or close its sub-hubs.
+          </p>
+          <HubTreeView roots={tree} showEmpty={showEmpty} />
+          {hiddenEmpty > 0 && !showEmpty && (
+            <p className={styles.muted}>
+              {hiddenEmpty} hub{hiddenEmpty === 1 ? "" : "s"} with no cards {hiddenEmpty === 1 ? "is" : "are"} hidden.{" "}
+              <Link href={`/dashboard?${new URLSearchParams({ ...scope, empty: "1" })}`} className={styles.link}>
+                Show them
               </Link>
-            ))}
-          </div>
+            </p>
+          )}
+          {showEmpty && (
+            <p className={styles.muted}>
+              <Link href={hub ? `/dashboard?${new URLSearchParams(scope)}` : "/dashboard"} className={styles.link}>
+                Hide hubs with no cards
+              </Link>
+            </p>
+          )}
         </section>
 
         <div className={styles.grid2}>

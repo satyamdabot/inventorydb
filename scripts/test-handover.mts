@@ -9,6 +9,7 @@ const hubs: Hub[] = ["bangalore", "kadapa"].map((id) => ({
   city: id,
   is_central: id === "bangalore" ? "true" : "false",
   active: "true",
+  parent_hub: "",
 }));
 const person = (id: string, role: Person["role"], hub: string, active = "true"): Person => ({
   person_id: id,

@@ -1,8 +1,8 @@
-import assert from "node:assert/strict";
+﻿import assert from "node:assert/strict";
 import { computeDashboard } from "../src/lib/dashboard";
 import type { Hub, Item, ItemEvent, Person } from "../src/lib/schema";
 
-const hub = (id: string): Hub => ({ hub_id: id, name: id, city: id, is_central: "false", active: "true" });
+const hub = (id: string): Hub => ({ hub_id: id, name: id, city: id, is_central: "false", active: "true", parent_hub: "" });
 const hubs = [hub("bangalore"), hub("kadapa"), hub("empty")];
 const person = (id: string, role: Person["role"]): Person => ({ person_id: id, name: id, role, hub: "kadapa", linked_user: "", active: "true" });
 const people = [person("fo-ravi", "fo"), person("im-kad", "im")];
@@ -79,6 +79,13 @@ for (const at of ["2026-09-24T20:00:00Z", "2026-09-25T01:30:00+05:30"]) {
   assert.equal(ist.activity[6].sent, 1);
   assert.equal(ist.activity[5].sent, 0);
 }
+
+// A scope of several hubs (a hub and the ones under it) counts them together.
+const both = computeDashboard(items, events, people, hubs, { hub: "", scope: ["bangalore", "kadapa"], days: 7, now });
+assert.equal(both.total, 5);
+assert.equal(computeDashboard(items, events, people, hubs, { hub: "", scope: ["kadapa"], days: 7, now }).total, 3);
+assert.equal(computeDashboard(items, events, people, hubs, { hub: "", scope: ["empty"], days: 7, now }).total, 0);
+assert.equal(both.activity[6].sent, 1); // the day's send at Kadapa is inside the scope
 
 // Hub filter scopes current-state numbers and events.
 const k = computeDashboard(items, events, people, hubs, { hub: "kadapa", days: 7, now });

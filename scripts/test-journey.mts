@@ -1,10 +1,10 @@
-import assert from "node:assert/strict";
+﻿import assert from "node:assert/strict";
 import { computeDashboard } from "../src/lib/dashboard";
 import { planReceive, planSend, type HandoverContext, type HandoverPlan } from "../src/lib/handover";
 import type { Hub, Item, ItemEvent, Person } from "../src/lib/schema";
 
 // A card's full life across hubs, run through the real planners and the dashboard calculation.
-const hub = (id: string): Hub => ({ hub_id: id, name: id, city: id, is_central: id === "bangalore" ? "true" : "false", active: "true" });
+const hub = (id: string): Hub => ({ hub_id: id, name: id, city: id, is_central: id === "bangalore" ? "true" : "false", active: "true", parent_hub: "" });
 const hubs = [hub("bangalore"), hub("hyderabad")];
 const person = (id: string, role: Person["role"], h: string): Person => ({ person_id: id, name: id, role, hub: h, linked_user: "", active: "true" });
 const people = [

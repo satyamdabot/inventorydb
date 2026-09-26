@@ -249,6 +249,105 @@
   font-size: 0.8rem;
 }
 
+/* Hub tree: a left rule shows the hierarchy, each level indented under its parent. */
+.tree,
+.treeChildren {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.treeChildren {
+  margin-left: 14px;
+  padding-left: 14px;
+  border-left: 1px solid var(--grid);
+}
+.tree li,
+.treeChildren li {
+  margin: 0;
+}
+.treeNode > summary {
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.treeNode > summary::-webkit-details-marker {
+  display: none;
+}
+.treeNode > summary::before {
+  content: "▸";
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  width: 12px;
+  flex: none;
+}
+.treeNode[open] > summary::before {
+  content: "▾";
+}
+.treeLeaf {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding-left: 20px;
+}
+.treeRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 2px 12px;
+  padding: 7px 0;
+  min-width: 0;
+}
+.treeName {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+.treeTag {
+  margin-left: 8px;
+  font-weight: 400;
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+.treeCount {
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+.treeMeta {
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+}
+.crumbs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+}
+.crumbs a {
+  color: var(--text-secondary);
+}
+.toggle {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  font-size: 0.85rem;
+}
+.toggle a,
+.toggle span {
+  padding: 6px 14px;
+  color: var(--text-secondary);
+  text-decoration: none;
+}
+.toggle .toggleOn {
+  background: var(--text-primary);
+  color: var(--surface-1);
+}
+
 .attention {
   list-style: none;
   margin: 0;

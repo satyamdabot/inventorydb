@@ -1,4 +1,4 @@
-import assert from "node:assert/strict";
+﻿import assert from "node:assert/strict";
 import { planCorrection, type CorrectionInput } from "../src/lib/correction";
 import type { Hub, Item, Person } from "../src/lib/schema";
 
@@ -8,6 +8,7 @@ const hubs: Hub[] = ["bangalore", "kadapa"].map((id) => ({
   city: id,
   is_central: id === "bangalore" ? "true" : "false",
   active: "true",
+  parent_hub: "",
 }));
 const person = (id: string, role: Person["role"], hub: string): Person => ({
   person_id: id,
