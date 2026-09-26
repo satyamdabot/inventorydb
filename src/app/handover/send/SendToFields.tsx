@@ -6,13 +6,13 @@ import styles from "../form.module.css";
 export interface PersonGroup {
   role: string;
   label: string;
-  people: { id: string; label: string; hub: string }[];
+  people: { id: string; label: string }[];
 }
 
 /**
  * "Send to": the person AND the location, both required. The person is picked in two steps (category,
- * then a person from it) so the list stays short. Once a person is chosen the location fills in with
- * their own hub, and stays changeable for someone who is working somewhere else.
+ * then a person from it) so the list stays short. The location is never filled in for you: it starts
+ * empty and has to be chosen every time, because an FO or IFO may be working away from their own hub.
  */
 export default function SendToFields({
   groups,
@@ -24,7 +24,6 @@ export default function SendToFields({
   const [role, setRole] = useState("");
   const [person, setPerson] = useState("");
   const [hub, setHub] = useState("");
-  const [hubChosenByHand, setHubChosenByHand] = useState(false);
   const people = groups.find((g) => g.role === role)?.people ?? [];
 
   return (
@@ -58,11 +57,7 @@ export default function SendToFields({
               value={person}
               required
               disabled={!role}
-              onChange={(e) => {
-                setPerson(e.target.value);
-                const chosen = people.find((p) => p.id === e.target.value);
-                if (chosen && !hubChosenByHand) setHub(chosen.hub);
-              }}
+              onChange={(e) => setPerson(e.target.value)}
             >
               <option value="">{role ? "Select a person" : "Choose a category first"}</option>
               {people.map((p) => (
@@ -88,10 +83,7 @@ export default function SendToFields({
             name="hub"
             value={hub}
             required
-            onChange={(e) => {
-              setHub(e.target.value);
-              setHubChosenByHand(true);
-            }}
+            onChange={(e) => setHub(e.target.value)}
           >
             <option value="">Select a location</option>
             {hubs.map((h) => (
@@ -101,8 +93,8 @@ export default function SendToFields({
             ))}
           </select>
           <p className={styles.hint}>
-            Where the cards will be recorded. It fills in with the person&apos;s own hub. Change it if they are working
-            somewhere else.
+            Where the cards will be recorded. Choose it every time: it is not filled in from the person, because they
+            may be working at another hub.
           </p>
         </div>
       </div>
