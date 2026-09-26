@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { requireRole } from "@/lib/authz";
+import { ROLE_LABELS } from "@/lib/labels";
 import { getStore } from "@/lib/store";
 import styles from "../admin.module.css";
 import { addUser, saveUser } from "./actions";
@@ -7,7 +8,7 @@ import { addUser, saveUser } from "./actions";
 const ERRORS: Record<string, string> = {
   invalid: "Please enter a valid email and role.",
   exists: "That email already has access.",
-  person: "An IM login must be linked to an active IM from the People tab.",
+  person: "An IM login must be linked to an active IM, and a Rig login to an active rig team member, from the People tab.",
   self: "You can't change your own access. Ask another admin.",
 };
 
@@ -17,20 +18,24 @@ export default async function UsersPage({ searchParams }: PageProps<"/admin/user
   const store = getStore();
   const [users, people] = await Promise.all([store.list("users"), store.list("people")]);
   users.sort((a, b) => a.email.localeCompare(b.email));
-  const ims = people.filter((p) => p.role === "im" && p.active !== "false").sort((a, b) => a.name.localeCompare(b.name));
+  // Logins link to an IM or a rig team member; the server checks the role matches the login's role.
+  const linkable = people
+    .filter((p) => (p.role === "im" || p.role === "rig") && p.active !== "false")
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   const roleSelect = (value?: string) => (
     <select name="role" defaultValue={value ?? "im"}>
       <option value="im">IM</option>
+      <option value="rig">Rig</option>
       <option value="admin">Admin</option>
     </select>
   );
   const personSelect = (value?: string) => (
     <select name="person" defaultValue={value ?? ""}>
       <option value="">Linked person: none</option>
-      {ims.map((p) => (
+      {linkable.map((p) => (
         <option key={p.person_id} value={p.person_id}>
-          {p.name}
+          {p.name} ({ROLE_LABELS[p.role]})
         </option>
       ))}
     </select>
@@ -43,8 +48,9 @@ export default async function UsersPage({ searchParams }: PageProps<"/admin/user
       </p>
       <h1>Users</h1>
       <p className={styles.muted}>
-        Only these Google accounts can sign in. IMs record handovers and must be linked to their entry in
-        the People tab. Changes apply the next time that person signs in. Deactivate instead of deleting.
+        Only these Google accounts can sign in. Admins and IMs can send and receive cards. Rig can view the
+        dashboard and inventory. IM and Rig logins must be linked to their entry in the People tab. Changes
+        apply the next time that person signs in. Deactivate instead of deleting.
       </p>
       {typeof error === "string" && ERRORS[error] && <p className={styles.error}>{ERRORS[error]}</p>}
 

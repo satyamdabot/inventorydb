@@ -5,10 +5,11 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireRole } from "@/lib/authz";
 import { getStore } from "@/lib/store";
+import { checkUserLink } from "@/lib/user-link";
 
 const UserInput = z.object({
   email: z.email().transform((e) => e.toLowerCase()),
-  role: z.enum(["admin", "im"]),
+  role: z.enum(["admin", "im", "rig"]),
   person: z.string(),
 });
 
@@ -23,11 +24,10 @@ function parse(formData: FormData) {
   return parsed.success ? parsed.data : fail("invalid");
 }
 
-// An IM login must be linked to an active IM in the People tab, so we know their hub and name.
-async function checkPerson(role: string, personId: string) {
-  if (!personId) return role === "im" ? fail("person") : "";
-  const person = (await getStore().list("people")).find((p) => p.person_id === personId && p.active !== "false");
-  return person ? personId : fail("person");
+// An IM login links to an IM in the People tab, a Rig login to a rig team member.
+async function linkedPerson(role: "admin" | "im" | "rig", personId: string) {
+  const linked = checkUserLink(role, personId, await getStore().list("people"));
+  return linked === undefined ? fail("person") : linked;
 }
 
 export async function addUser(formData: FormData) {
@@ -35,7 +35,7 @@ export async function addUser(formData: FormData) {
   const { email, role, person } = parse(formData);
   const store = getStore();
   if ((await store.list("users")).some((u) => u.email.toLowerCase() === email)) fail("exists");
-  await store.upsert("users", [{ email, role, person_id: await checkPerson(role, person), active: "true" }]);
+  await store.upsert("users", [{ email, role, person_id: await linkedPerson(role, person), active: "true" }]);
   revalidatePath("/admin/users");
 }
 
@@ -49,7 +49,7 @@ export async function saveUser(formData: FormData) {
     {
       email,
       role,
-      person_id: await checkPerson(role, person),
+      person_id: await linkedPerson(role, person),
       active: formData.get("active") === "on" ? "true" : "false",
     },
   ]);
