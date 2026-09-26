@@ -21,7 +21,6 @@ export default async function ReceivePage({ searchParams }: PageProps<"/handover
   const activeHubs = hubs.filter((h) => h.active !== "false").sort((a, b) => a.name.localeCompare(b.name));
   const hubNames = new Map(hubs.map((h) => [h.hub_id, h.name]));
   const byOptions = allowedActors(user, actorOptions(people, users, (id) => hubNames.get(id) ?? id));
-  const personName = new Map(people.map((p) => [p.person_id, p.name]));
 
   // Cards waiting to be received, per hub they were sent to.
   const pendingByHub = new Map<string, number>();
@@ -39,7 +38,6 @@ export default async function ReceivePage({ searchParams }: PageProps<"/handover
       : isActive(busiest)
         ? busiest!
         : (activeHubs.find((h) => h.is_central === "true")?.hub_id ?? activeHubs[0]?.hub_id ?? "");
-  const pending = items.filter((i) => i.status === "pending" && i.current_hub === hub);
   const waitingElsewhere = [...pendingByHub.entries()].filter(([id]) => id !== hub);
 
   return (
@@ -49,8 +47,8 @@ export default async function ReceivePage({ searchParams }: PageProps<"/handover
       </p>
       <h1>Receive cards</h1>
       <p className={styles.muted}>
-        Take cards into stock at a hub: pending cards sent to it, or cards coming back from an IFO, FO or
-        the rig team. Scan the QR codes, or tick the pending cards below.
+        Take cards into stock at a hub: cards sent to it, or cards coming back from an IFO, FO or the rig
+        team. Scan the QR codes into the box.
       </p>
       {one(sp.done) && <p className={styles.ok}>Received {one(sp.done)} card(s) into stock.</p>}
       {one(sp.mismatch) && <p className={styles.error}>{one(sp.mismatch)} It was recorded on each card&apos;s history.</p>}
@@ -79,33 +77,6 @@ export default async function ReceivePage({ searchParams }: PageProps<"/handover
 
       <form action={receiveCards} className={styles.list}>
         <input type="hidden" name="hub" value={hub} />
-        <h2>Pending for this hub ({pending.length})</h2>
-        {pending.length === 0 ? (
-          <p className={styles.muted}>No cards are pending for this hub.</p>
-        ) : (
-          <table className={styles.table}>
-            <thead>
-              <tr>
-                <th />
-                <th>Serial</th>
-                <th>Prism no.</th>
-                <th>Sent to</th>
-              </tr>
-            </thead>
-            <tbody>
-              {pending.map((i) => (
-                <tr key={i.item_id}>
-                  <td>
-                    <input type="checkbox" name="ids" value={i.item_id} aria-label={`Select ${i.item_id}`} />
-                  </td>
-                  <td>{i.item_id}</td>
-                  <td>{i.prism_no}</td>
-                  <td>{personName.get(i.current_holder) ?? (i.current_holder || "Any IM at this hub")}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
         <ScanBox
           id="scanned"
           mode="receive"
