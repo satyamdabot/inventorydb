@@ -1,7 +1,7 @@
 import Link from "next/link";
 import type { CSSProperties } from "react";
 import { requireRole } from "@/lib/authz";
-import { computeDashboard } from "@/lib/dashboard";
+import { LATE_AFTER_HOURS, computeDashboard } from "@/lib/dashboard";
 import { buildHubTree } from "@/lib/hub-tree";
 import { ROLE_LABELS, STATUS_LABELS, one } from "@/lib/labels";
 import type { Status } from "@/lib/schema";
@@ -27,6 +27,7 @@ const TONE = { critical: styles.iconCritical, warning: styles.iconWarning, info:
 
 const STATUS_ORDER: Status[] = ["in_stock", "with_fo", "traveling", "with_rig", "pending", "lost", "damaged", "retired"];
 const HUB_BARS = 8;
+const LATE_LINES = 8; // late lines shown before "and N more"
 
 export default async function DashboardPage({ searchParams }: PageProps<"/dashboard">) {
   const user = await requireRole();
@@ -97,19 +98,31 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
 
   // Plain sentences about what to look at, most useful first. Empty means all is well.
   const attention: Attention[] = [];
-  for (const p of d.pending) {
-    attention.push({
-      key: `pending-${p.hub_id}`,
-      text: `${plural(p.count, "card")} waiting to be received at ${p.name}${p.oldestDays ? `, oldest ${p.oldestDays} days` : ""}`,
-      href: `/handover/receive?${new URLSearchParams({ hub: p.hub_id })}`,
-      tone: "warning",
-    });
+  // Late cards, oldest first: an FO who has not returned cards, an IFO whose cards have not arrived, and cards
+  // sent to a hub that nobody has received. One line per person or hub, so each says who to chase.
+  const howLong = (hours: number) => (hours < 48 ? `${Math.floor(hours)} hours` : `${Math.floor(hours / 24)} days`);
+  for (const g of d.late.slice(0, LATE_LINES)) {
+    if (g.kind === "pending") {
+      attention.push({
+        key: `late-pending-${g.key}`,
+        text: `${plural(g.count, "card")} sent to ${g.label} not received after ${LATE_AFTER_HOURS} hours, oldest ${howLong(g.oldestHours)}`,
+        href: `/handover/receive?${new URLSearchParams({ hub: g.key })}`,
+        tone: "warning",
+      });
+    } else {
+      attention.push({
+        key: `late-${g.kind}-${g.key}`,
+        text: `${g.label} (${g.kind === "fo" ? "FO" : "IFO"}) has ${plural(g.count, "card")} ${g.kind === "fo" ? "not returned" : "not arrived"} after ${LATE_AFTER_HOURS} hours, longest ${howLong(g.oldestHours)}`,
+        href: inventory({ holder: g.key, status: g.kind === "fo" ? "with_fo" : "traveling" }),
+        tone: "warning",
+      });
+    }
   }
-  for (const r of d.longestOut.filter((x) => (x.days ?? 0) > 0).slice(0, 3)) {
+  if (d.late.length > LATE_LINES) {
     attention.push({
-      key: `out-${r.item_id}`,
-      text: `${r.item_id} has been out ${r.days} days (${r.holder || "unknown holder"})`,
-      href: `/inventory/${r.item_id}`,
+      key: "late-more",
+      text: `and ${d.late.length - LATE_LINES} more late`,
+      href: inventory({ status: "with_fo,traveling,pending" }),
       tone: "info",
     });
   }
@@ -253,6 +266,10 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
         <div className={styles.grid2}>
           <section className={styles.card} aria-label="Needs attention">
             <h2>Needs attention</h2>
+            <p className={styles.muted}>
+              Cards with an FO or IFO, or sent to a hub, for more than {LATE_AFTER_HOURS} hours, plus lost, damaged and
+              mismatched cards.
+            </p>
             {attention.length === 0 ? (
               <p className={styles.ok}>
                 <span className={`${styles.icon} ${styles.iconGood}`} aria-hidden>

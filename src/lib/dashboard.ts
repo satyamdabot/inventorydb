@@ -31,6 +31,20 @@ export interface PendingRow {
   count: number;
   oldestDays: number | null;
 }
+/**
+ * How long cards may be with each kind of holder before they are flagged. A card is late once it has been
+ * out for MORE than this many hours since the handover. Exactly on the limit is not late.
+ */
+export const LATE_AFTER_HOURS = 24;
+
+export interface LateGroup {
+  kind: "fo" | "ifo" | "pending";
+  key: string; // the person_id of the FO or IFO, or the hub_id the cards were sent to
+  label: string; // that person's or hub's name
+  count: number;
+  oldestHours: number;
+}
+
 export interface AgingRow {
   item_id: string;
   status: Status;
@@ -57,6 +71,7 @@ export interface Dashboard {
   holders: HolderRow[];
   pending: PendingRow[];
   longestOut: AgingRow[];
+  late: LateGroup[]; // cards with an FO or IFO, or sent to a hub, for longer than LATE_AFTER_HOURS, grouped by who to chase
   activity: ActivityDay[];
   noHistory: number;
   inconsistencies: Inconsistency[];
@@ -89,6 +104,11 @@ export function computeDashboard(
   const ageDays = (item: Item): number | null => {
     const t = lastAt.get(item.item_id) ?? Date.parse(item.updated_at);
     return Number.isNaN(t) ? null : Math.max(0, Math.floor((opts.now.getTime() - t) / DAY));
+  };
+  // Hours since the last movement, to the minute, for the 24-hour rules.
+  const ageHours = (item: Item): number | null => {
+    const t = lastAt.get(item.item_id) ?? Date.parse(item.updated_at);
+    return Number.isNaN(t) ? null : Math.max(0, (opts.now.getTime() - t) / 3_600_000);
   };
 
   const byStatus = Object.fromEntries(STATUSES.map((s) => [s, 0])) as Record<Status, number>;
@@ -172,6 +192,23 @@ export function computeDashboard(
   const usable = scoped.length - byStatus.lost - byStatus.damaged - byStatus.retired;
   const waitingItems = scoped.filter((i) => i.status === "pending" || i.status === "traveling");
 
+  // Cards that should have come back or arrived by now. An FO or IFO holding cards, or cards sent to a hub
+  // and not received, for more than the limit: one group per person or hub, so each line says who to chase.
+  const lateMap = new Map<string, LateGroup>();
+  for (const i of scoped) {
+    const kind = i.status === "with_fo" ? "fo" : i.status === "traveling" ? "ifo" : i.status === "pending" ? "pending" : undefined;
+    const hours = ageHours(i);
+    if (!kind || hours === null || hours <= LATE_AFTER_HOURS) continue;
+    const key = kind === "pending" ? i.current_hub : i.current_holder;
+    const label = kind === "pending" ? (hubName.get(key) ?? key) : (personById.get(key)?.name ?? (key || "Unknown"));
+    const id = `${kind}:${key}`;
+    const group = lateMap.get(id) ?? { kind, key, label, count: 0, oldestHours: 0 };
+    group.count++;
+    group.oldestHours = Math.max(group.oldestHours, hours);
+    lateMap.set(id, group);
+  }
+  const late = [...lateMap.values()].sort((a, b) => b.oldestHours - a.oldestHours);
+
   const withEvents = new Set(events.map((e) => e.item_id));
   return {
     total: scoped.length,
@@ -186,6 +223,7 @@ export function computeDashboard(
     holders,
     pending,
     longestOut,
+    late,
     activity,
     noHistory: scoped.filter((i) => !withEvents.has(i.item_id)).length,
     inconsistencies: findInconsistencies(items, events),
