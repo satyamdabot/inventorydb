@@ -139,7 +139,10 @@ export default async function SendPage({ searchParams }: PageProps<"/handover/se
                 ) : null;
               })}
             </select>
-            <p className={styles.hint}>IM: waits to be received. IFO: traveling. FO: in the field. Rig: with rig team.</p>
+            <p className={styles.hint}>
+              IM: waits to be received at their hub. IFO, FO and rig: the cards stay at the hub you are sending from,
+              whichever hub that person belongs to.
+            </p>
           </div>
         </div>
 

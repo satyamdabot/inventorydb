@@ -31,8 +31,9 @@ const SEND_STATUS: Partial<Record<Role, Status>> = {
   fo: "with_fo",
   rig: "with_rig",
 };
-// Where the card is once handed over. A traveling card stays at the hub it left.
-const HUB_FROM_RECIPIENT = new Set<Status>(["pending", "with_fo", "with_rig"]);
+// Only a card sent to an IM moves to the recipient's hub (it is going there). A card handed to an IFO, FO or
+// rig team member stays at the hub it was sent from, whichever hub that person belongs to.
+const HUB_FROM_RECIPIENT = new Set<Status>(["pending"]);
 
 // Cards an IM can take back into stock.
 const RECEIVABLE = new Set<Status>(["pending", "traveling", "with_fo", "with_rig"]);

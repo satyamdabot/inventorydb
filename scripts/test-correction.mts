@@ -44,13 +44,16 @@ const input = (over: Partial<CorrectionInput> = {}): CorrectionInput => ({
   ...over,
 });
 
-// Several cards moved to an FO: hub defaults to the FO's hub, one event per card, one batch.
+// Several cards moved to an FO: they stay at the hub they were at (the FO's own hub, Kadapa, does not
+// pull them there), one event per card, one batch.
 const many = planCorrection([item("A"), item("B")], input(), ctx);
 assert.deepEqual(many.errors, []);
 assert.equal(many.events.length, 2);
 assert.equal(new Set(many.events.map((e) => e.batch_id)).size, 1);
 assert.equal(many.items[0].status, "with_fo");
-assert.equal(many.items[0].current_hub, "kadapa");
+assert.equal(many.items[0].current_hub, "bangalore");
+// A hub chosen on the form still wins.
+assert.equal(planCorrection([item("A")], input({ hub: "kadapa" }), ctx).items[0].current_hub, "kadapa");
 assert.equal(many.items[0].current_holder, "fo-ravi");
 assert.equal(many.items[0].last_event_id, many.events[0].event_id);
 assert.equal(many.events[0].action, "correct");

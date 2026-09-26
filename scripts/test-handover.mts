@@ -146,13 +146,25 @@ assert.ok(rightHub.items.every((i) => i.status === "in_stock" && i.current_hub =
 const fromFo = item("C", { status: "with_fo", current_holder: "fo-ravi", current_hub: "kadapa" });
 assert.deepEqual(planReceive([fromFo], { hub: "bangalore", note: "" }, ctx).errors, []);
 
+// Your case: the FO belongs to a different hub than the one sending. The card stays at the SENDING hub.
+const kadapaSendsToBlrFo = planSend([item("K9", { current_hub: "kadapa" })], { fromHub: "kadapa", recipient: "fo-blr", note: "" }, { ...ctx, people: [...people, person("fo-blr", "fo", "bangalore")] });
+assert.deepEqual(kadapaSendsToBlrFo.errors, []);
+assert.equal(kadapaSendsToBlrFo.items[0].status, "with_fo");
+assert.equal(kadapaSendsToBlrFo.items[0].current_hub, "kadapa"); // in the field at Kadapa, though the FO is a Bangalore FO
+assert.equal(kadapaSendsToBlrFo.items[0].current_holder, "fo-blr");
+// The same for the rig team and for an IFO.
+assert.equal(planSend([item("K9", { current_hub: "kadapa" })], { fromHub: "kadapa", recipient: "rig-s", note: "" }, ctx).items[0].current_hub, "kadapa");
+assert.equal(planSend([item("K9", { current_hub: "kadapa" })], { fromHub: "kadapa", recipient: "ifo-amit", note: "" }, ctx).items[0].current_hub, "kadapa");
+// Only a card sent to an IM (or to a hub) goes to the destination, because that is where it is going.
+assert.equal(planSend([item("K9")], { fromHub: "bangalore", recipient: "im-kad", note: "" }, ctx).items[0].current_hub, "kadapa");
+
 // "Sending from": every card must be in stock at that hub. Choosing the right hub is the fix.
 const atKadapa = item("K1", { current_hub: "kadapa", home_hub: "kadapa" });
 const atBlr = item("B1");
 const okFrom = planSend([atBlr], { fromHub: "bangalore", recipient: "fo-ravi", note: "" }, ctx);
 assert.deepEqual(okFrom.errors, []);
 assert.equal(okFrom.events[0].from_hub, "bangalore"); // where it left from
-assert.equal(okFrom.events[0].hub, "kadapa"); // where it is after (the FO's hub)
+assert.equal(okFrom.events[0].hub, "bangalore"); // it stays at the hub it was sent from, not the FO's hub (Kadapa)
 const wrongFrom = planSend([atBlr, atKadapa], { fromHub: "bangalore", recipient: "fo-ravi", note: "" }, ctx);
 assert.match(wrongFrom.errors[0], /Not at bangalore: K1 \(at kadapa\)\. Choose that hub in "Sending from"/);
 assert.equal(wrongFrom.events.length, 0);

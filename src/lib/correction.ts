@@ -39,8 +39,8 @@ const HOLDER_ROLE: Partial<Record<Status, Role>> = {
   with_fo: "fo",
   with_rig: "rig",
 };
-// For these the card is at the holder's hub unless a hub is chosen explicitly.
-const HUB_FROM_HOLDER = new Set<Status>(["pending", "with_fo", "with_rig"]);
+// A card that is pending is at the receiving IM's hub. For any other holder it stays where it was unless a hub is chosen.
+const HUB_FROM_HOLDER = new Set<Status>(["pending"]);
 
 /**
  * Turns an admin correction into events plus updated item rows. Nothing is saved here,
