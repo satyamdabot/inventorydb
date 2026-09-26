@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { checkUserLink } from "../src/lib/user-link";
+import { checkUserLink, resolveLinkedPerson } from "../src/lib/user-link";
 import type { Person } from "../src/lib/schema";
 
 const person = (id: string, role: Person["role"], active = "true"): Person => ({
@@ -24,5 +24,28 @@ assert.equal(checkUserLink("admin", "", people), "");
 assert.equal(checkUserLink("admin", "p-fo", people), "p-fo");
 assert.equal(checkUserLink("admin", "p-nobody", people), undefined);
 assert.equal(checkUserLink("admin", "p-gone", people), undefined);
+
+// A blank link is filled in from the People tab by email, so bulk-added logins work without hand-linking.
+const withEmail = (id: string, role: Person["role"], email: string, active = "true"): Person => ({
+  person_id: id, name: id, role, hub: "bangalore", linked_user: email, active,
+});
+const roster = [
+  withEmail("p-mihir", "im", "Mihir@x.com"),
+  withEmail("p-deepika", "rig", "dk@x.com"),
+  withEmail("p-old", "im", "old@x.com", "false"),
+  withEmail("p-fo", "fo", "fo@x.com"),
+];
+const login = (email: string, role: "admin" | "im" | "rig", person_id = "") => ({ email, role, person_id });
+assert.equal(resolveLinkedPerson(login("mihir@x.com", "im"), roster), "p-mihir"); // email match ignores case
+assert.equal(resolveLinkedPerson(login("dk@x.com", "rig"), roster), "p-deepika");
+assert.equal(resolveLinkedPerson(login("dk@x.com", "im"), roster), ""); // a rig person cannot be an IM login
+assert.equal(resolveLinkedPerson(login("old@x.com", "im"), roster), ""); // inactive people are not matched
+assert.equal(resolveLinkedPerson(login("fo@x.com", "im"), roster), ""); // only IM / rig roles are matched
+assert.equal(resolveLinkedPerson(login("nobody@x.com", "im"), roster), "");
+// A valid saved link wins over the email. A saved link that is no longer valid falls back to the email.
+assert.equal(resolveLinkedPerson(login("mihir@x.com", "im", "p-deepika"), roster), "p-mihir"); // wrong role: ignored
+assert.equal(resolveLinkedPerson(login("someone@x.com", "im", "p-mihir"), roster), "p-mihir");
+// Admins are never auto-linked, so they keep acting under their own email.
+assert.equal(resolveLinkedPerson(login("mihir@x.com", "admin"), roster), "");
 
 console.log("users tests passed");
