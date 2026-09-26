@@ -10,6 +10,7 @@ import { ActivityChart, BarList, n } from "./charts";
 import styles from "./dashboard.module.css";
 import { HubOrgChart, countHidden } from "./hub-tree-view";
 import { Icon, type IconName } from "./icons";
+import { SummaryKpis } from "./summary-kpis";
 
 const inventory = (params: Record<string, string>) => `/inventory?${new URLSearchParams(params)}`;
 const days = (d: number | null) => (d === null ? "—" : d === 0 ? "today" : `${d}d`);
@@ -48,7 +49,6 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
   const s = d.byStatus;
   const share = (v: number) => (d.total ? `${Math.round((v / d.total) * 100)}% of all cards` : "");
   const kpis: { label: string; value: number; hint: string; href: string; icon: IconName; color: string }[] = [
-    { label: "Total cards", value: d.total, hint: `${activeHubs} hubs`, href: "/inventory", icon: "layers", color: "var(--series-1)" },
     { label: "In stock", value: s.in_stock, hint: share(s.in_stock), href: inventory({ status: "in_stock" }), icon: "check", color: "var(--series-3)" },
     { label: "With field officers", value: s.with_fo, hint: share(s.with_fo), href: inventory({ status: "with_fo" }), icon: "user", color: "var(--series-2)" },
     { label: "With rig team", value: s.with_rig, hint: share(s.with_rig), href: inventory({ status: "with_rig" }), icon: "database", color: "var(--series-7)" },
@@ -186,6 +186,8 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
           <Icon name="search" size={18} />
           <input name="q" placeholder="Find a card by serial, prism no., brand or model" aria-label="Find a card" />
         </form>
+
+        <SummaryKpis d={d} />
 
         <section className={styles.kpiGrid} aria-label="Overview">
           {kpis.map((k) => (

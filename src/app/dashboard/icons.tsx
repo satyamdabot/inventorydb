@@ -98,6 +98,13 @@ const PATHS = {
       <line x1="21" y1="12" x2="9" y2="12" />
     </>
   ),
+  clock: (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <polyline points="12 6 12 12 16 14" />
+    </>
+  ),
+  activity: <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />,
   refresh: (
     <>
       <polyline points="23 4 23 10 17 10" />

@@ -49,6 +49,10 @@ export interface Dashboard {
   byStatus: Record<Status, number>;
   outCount: number;
   avgDaysOut: number | null;
+  usable: number; // cards that can be used: not lost, damaged or retired
+  utilization: number | null; // cards out ÷ usable cards, as a percentage. null when there are no usable cards
+  waiting: number; // sent or traveling, and not yet received
+  oldestWaitingDays: number | null;
   hubs: HubRow[];
   holders: HolderRow[];
   pending: PendingRow[];
@@ -163,12 +167,21 @@ export function computeDashboard(
     else if (e.action === "correct" || e.action === "reassign_home_hub") day.corrected++;
   }
 
+  // Management numbers. Lost, damaged and retired cards are not part of the usable fleet, so they don't
+  // drag utilization down. "Waiting" is anything sent that nobody has confirmed receiving yet.
+  const usable = scoped.length - byStatus.lost - byStatus.damaged - byStatus.retired;
+  const waitingItems = scoped.filter((i) => i.status === "pending" || i.status === "traveling");
+
   const withEvents = new Set(events.map((e) => e.item_id));
   return {
     total: scoped.length,
     byStatus,
     outCount: out.length,
     avgDaysOut: outAges.length ? outAges.reduce((a, b) => a + b, 0) / outAges.length : null,
+    usable,
+    utilization: usable > 0 ? (out.length / usable) * 100 : null,
+    waiting: waitingItems.length,
+    oldestWaitingDays: oldest(waitingItems.map(ageDays)),
     hubs: hubRows,
     holders,
     pending,

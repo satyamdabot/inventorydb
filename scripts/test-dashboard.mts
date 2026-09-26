@@ -45,6 +45,20 @@ assert.equal(d.longestOut[0].item_id, "B");
 assert.equal(d.longestOut[0].days, 10);
 assert.equal(d.avgDaysOut, 11 / 3);
 
+// Management numbers. Five cards: 1 in stock, 2 with the FO, 1 pending, 1 lost. The lost card is not usable.
+assert.equal(d.usable, 4);
+assert.equal(d.utilization, 75); // 3 out of 4 usable cards
+assert.equal(d.waiting, 1); // card D, pending
+assert.equal(d.oldestWaitingDays, 0); // sent this morning
+assert.equal(computeDashboard(items, events, people, hubs, { hub: "empty", days: 7, now }).utilization, null); // no cards, no ratio
+const traveling = [{ ...items[0], status: "traveling" as const, current_holder: "fo-ravi", last_event_id: "E4" }, ...items.slice(1)];
+const t = computeDashboard(traveling, events, people, hubs, { hub: "", days: 7, now });
+assert.equal(t.waiting, 2); // traveling cards count as waiting too
+assert.equal(t.utilization, 100); // 4 of 4 usable are out
+// A fleet where everything is lost has no usable cards, so no utilization figure.
+const allLost = items.map((i) => ({ ...i, status: "lost" as const }));
+assert.equal(computeDashboard(allLost, events, people, hubs, { hub: "", days: 7, now }).utilization, null);
+
 // Holders: Ravi has 2, oldest 10 days. Pending is grouped by destination hub.
 assert.deepEqual(d.holders[0], { person_id: "fo-ravi", name: "fo-ravi", role: "fo", count: 2, oldestDays: 10 });
 assert.deepEqual(d.pending, [{ hub_id: "kadapa", name: "kadapa", count: 1, oldestDays: 0 }]);

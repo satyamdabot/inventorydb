@@ -11,6 +11,7 @@ import { n } from "../../charts";
 import { Collapsible } from "../../collapsible";
 import styles from "../../dashboard.module.css";
 import { breakdown } from "../../hub-tree-view";
+import { SummaryKpis } from "../../summary-kpis";
 
 const ACTION_LABELS: Record<Action, string> = {
   check_out: "Sent",
@@ -118,6 +119,8 @@ export default async function HubDetailPage({ params, searchParams }: PageProps<
             {withSub ? <Link href={`/dashboard/hub/${id}?sub=0`}>This hub only</Link> : <span className={styles.toggleOn}>This hub only</span>}
           </div>
         )}
+
+        <SummaryKpis d={d} hubParam={hubParam} />
 
         <section className={styles.tiles} aria-label="Stock at this hub">
           {tiles.map((t) => (
