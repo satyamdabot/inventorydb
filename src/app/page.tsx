@@ -1,46 +1,109 @@
 import Link from "next/link";
 import { signOut } from "@/auth";
 import { requireRole } from "@/lib/authz";
-import styles from "./shell.module.css";
+import { ROLE_LABELS, one } from "@/lib/labels";
+import type { Role } from "@/lib/schema";
+import { istTimestamp } from "@/lib/time";
+import styles from "./dashboard/dashboard.module.css";
+import { Icon, type IconName } from "./dashboard/icons";
+
+interface Tile {
+  href: string;
+  title: string;
+  desc: string;
+  icon: IconName;
+  roles: Role[];
+}
+
+const HANDLERS: Role[] = ["admin", "im"];
+
+// What each section is for, in one line. A tile only shows for the roles that can open it.
+const WORK: Tile[] = [
+  { href: "/dashboard", title: "Dashboard", desc: "Live stock by hub, status and person, with the hub tree.", icon: "chart", roles: ["admin", "im", "rig"] },
+  { href: "/inventory", title: "Inventory", desc: "Search, filter and open any card and its history.", icon: "list", roles: ["admin", "im", "rig"] },
+  { href: "/handover/send", title: "Send cards", desc: "Hand cards to an IM, IFO, FO, the rig team or a hub.", icon: "send", roles: HANDLERS },
+  { href: "/handover/receive", title: "Receive cards", desc: "Take cards back into stock at a hub.", icon: "inbox", roles: HANDLERS },
+];
+
+const ADMIN: Tile[] = [
+  { href: "/admin/hubs", title: "Manage hubs", desc: "Add hubs and arrange the hierarchy.", icon: "pin", roles: ["admin"] },
+  { href: "/admin/people", title: "Manage people", desc: "The IMs, IFOs, FOs and rig team.", icon: "users", roles: ["admin"] },
+  { href: "/admin/users", title: "Manage users", desc: "Who can sign in, and as what.", icon: "shield", roles: ["admin"] },
+];
+
+function Section({ label, tiles }: { label: string; tiles: Tile[] }) {
+  if (tiles.length === 0) return null;
+  return (
+    <>
+      <p className={styles.sectionLabel}>{label}</p>
+      <div className={styles.menuGrid}>
+        {tiles.map((t) => (
+          <Link key={t.href} href={t.href} className={styles.menuItem}>
+            <span className={styles.menuIcon}>
+              <Icon name={t.icon} size={22} />
+            </span>
+            <span className={styles.menuBody}>
+              <span className={styles.menuTitle}>{t.title}</span>
+              <span className={styles.menuDesc}>{t.desc}</span>
+            </span>
+          </Link>
+        ))}
+      </div>
+    </>
+  );
+}
 
 export default async function Home({ searchParams }: PageProps<"/">) {
   const user = await requireRole();
-  const { denied } = await searchParams;
+  const sp = await searchParams;
+  const email = user.email ?? "";
+  const initials = (email.split("@")[0] || "?").slice(0, 2).toUpperCase();
+
+  // Good morning / afternoon / evening, by the hour in India.
+  const hour = Number(istTimestamp().slice(11, 13));
+  const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
 
   return (
-    <main className={styles.center}>
-      <div className={styles.card}>
-        <h1>Inventory</h1>
-        {denied && <p className={styles.error}>Your role cannot open that page.</p>}
-        <p className={styles.muted}>
-          Signed in as {user.email} ({user.role})
-        </p>
-        <Link href="/dashboard">Dashboard</Link>
-        <Link href="/inventory">Inventory</Link>
-        {(user.role === "admin" || user.role === "im") && (
-          <>
-            <Link href="/handover/send">Send cards</Link>
-            <Link href="/handover/receive">Receive cards</Link>
-          </>
-        )}
-        {user.role === "admin" && (
-          <>
-            <Link href="/admin/hubs">Manage hubs</Link>
-            <Link href="/admin/people">Manage people</Link>
-            <Link href="/admin/users">Manage users</Link>
-          </>
-        )}
-        <form
-          action={async () => {
-            "use server";
-            await signOut({ redirectTo: "/login" });
-          }}
-        >
-          <button className={styles.buttonSecondary} type="submit">
-            Sign out
-          </button>
-        </form>
-      </div>
-    </main>
+    <div className={styles.root}>
+      <main className={styles.wrap}>
+        <div className={styles.top}>
+          <div className={styles.brand}>
+            <span className={styles.brandIconPlain}>
+              <Icon name="layers" size={26} />
+            </span>
+            <div>
+              <h1>Inventory</h1>
+              <p className={styles.subtitle}>{greeting}. SD card tracking across hubs.</p>
+            </div>
+          </div>
+          <div className={styles.actions}>
+            <div className={styles.userChip}>
+              <span className={styles.avatar} aria-hidden>
+                {initials}
+              </span>
+              <span className={styles.userMeta}>
+                <strong>{email}</strong>
+                <span>{ROLE_LABELS[user.role]}</span>
+              </span>
+            </div>
+            <form
+              action={async () => {
+                "use server";
+                await signOut({ redirectTo: "/login" });
+              }}
+            >
+              <button type="submit" className={`${styles.btn} ${styles.btnReset}`}>
+                <Icon name="logout" size={16} /> Sign out
+              </button>
+            </form>
+          </div>
+        </div>
+
+        {one(sp.denied) && <p className={styles.banner}>Your role can&apos;t open that page.</p>}
+
+        <Section label="Work" tiles={WORK.filter((t) => t.roles.includes(user.role))} />
+        <Section label="Admin" tiles={ADMIN.filter((t) => t.roles.includes(user.role))} />
+      </main>
+    </div>
   );
 }
