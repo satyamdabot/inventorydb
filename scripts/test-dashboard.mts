@@ -44,7 +44,7 @@ assert.equal(d.outCount, 3);
 assert.equal(d.longestOut[0].item_id, "B");
 assert.equal(d.longestOut[0].days, 10);
 assert.equal(d.lateCards, 2); // B (10 days with an FO) and C (26 hours with an FO); D was sent 4 hours ago
-assert.equal(Math.round(d.oldestLateHours!), 240); // B, 10 days = 240 hours
+assert.equal(Math.round(d.oldestLateHours!), 242); // B: handed over on the 15th at 10:00, now is the 25th at 12:00 = 10 days 2 hours
 
 // Management numbers. Five cards: 1 in stock, 2 with the FO, 1 pending, 1 lost. The lost card is not usable.
 assert.equal(d.usable, 4);
