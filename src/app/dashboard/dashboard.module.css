@@ -789,6 +789,9 @@
   display: grid;
   place-items: center;
 }
+.summaryIconWarn {
+  color: var(--warning);
+}
 .summaryValue {
   font-size: 2.4rem;
   font-weight: 600;

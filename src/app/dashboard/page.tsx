@@ -264,7 +264,7 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
         </section>
 
         <div className={styles.grid2}>
-          <section className={styles.card} aria-label="Needs attention">
+          <section className={styles.card} id="attention" aria-label="Needs attention">
             <h2>Needs attention</h2>
             <p className={styles.muted}>
               Cards with an FO or IFO, or sent to a hub, for more than {LATE_AFTER_HOURS} hours, plus lost, damaged and

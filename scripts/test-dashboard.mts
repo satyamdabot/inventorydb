@@ -43,7 +43,8 @@ assert.equal(d.outCount, 3);
 // B out 10 days, C out 1 day, D out 0 days.
 assert.equal(d.longestOut[0].item_id, "B");
 assert.equal(d.longestOut[0].days, 10);
-assert.equal(d.avgDaysOut, 11 / 3);
+assert.equal(d.lateCards, 2); // B (10 days with an FO) and C (26 hours with an FO); D was sent 4 hours ago
+assert.equal(Math.round(d.oldestLateHours!), 240); // B, 10 days = 240 hours
 
 // Management numbers. Five cards: 1 in stock, 2 with the FO, 1 pending, 1 lost. The lost card is not usable.
 assert.equal(d.usable, 4);
@@ -92,6 +93,10 @@ assert.equal(Math.round(ifo.oldestHours), 40);
 const pend = lateDash.late.find((g) => g.kind === "pending")!;
 assert.deepEqual([pend.key, pend.label, pend.count], ["kadapa", "kadapa", 1]); // grouped by the hub it was sent to
 assert.equal(lateDash.late.length, 3); // nothing for the rig team or for stock
+assert.equal(lateDash.lateCards, 5); // Ravi's 3, the IFO's 1, and the 1 sent to Kadapa
+assert.equal(Math.round(lateDash.oldestLateHours!), 50);
+assert.equal(computeDashboard([item("S3")], [], latePeople, hubs, { hub: "", days: 7, now }).lateCards, 0);
+assert.equal(computeDashboard([item("S3")], [], latePeople, hubs, { hub: "", days: 7, now }).oldestLateHours, null);
 assert.deepEqual(lateDash.late.map((g) => g.kind), ["fo", "ifo", "pending"]); // oldest first
 // A card with no recorded movement time cannot be judged, so it is not flagged.
 const noTime = computeDashboard([item("N1", { status: "with_fo", current_holder: "fo-ravi" })], [], latePeople, hubs, { hub: "", days: 7, now });

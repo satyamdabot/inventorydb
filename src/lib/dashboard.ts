@@ -62,7 +62,8 @@ export interface Dashboard {
   total: number;
   byStatus: Record<Status, number>;
   outCount: number;
-  avgDaysOut: number | null;
+  lateCards: number; // cards past the 24-hour rules (see `late` for who to chase)
+  oldestLateHours: number | null;
   usable: number; // cards that can be used: not lost, damaged or retired
   utilization: number | null; // cards out ÷ usable cards, as a percentage. null when there are no usable cards
   waiting: number; // sent or traveling, and not yet received
@@ -115,7 +116,6 @@ export function computeDashboard(
   for (const i of scoped) if (i.status in byStatus) byStatus[i.status]++;
 
   const out = scoped.filter((i) => OUT_STATUSES.includes(i.status));
-  const outAges = out.map(ageDays).filter((d): d is number => d !== null);
 
   const hubRows: HubRow[] = hubs
     .map((h) => {
@@ -214,7 +214,8 @@ export function computeDashboard(
     total: scoped.length,
     byStatus,
     outCount: out.length,
-    avgDaysOut: outAges.length ? outAges.reduce((a, b) => a + b, 0) / outAges.length : null,
+    lateCards: late.reduce((sum, g) => sum + g.count, 0),
+    oldestLateHours: late.length ? Math.max(...late.map((g) => g.oldestHours)) : null,
     usable,
     utilization: usable > 0 ? (out.length / usable) * 100 : null,
     waiting: waitingItems.length,

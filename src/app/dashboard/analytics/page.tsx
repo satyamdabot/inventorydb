@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { requireRole } from "@/lib/authz";
-import { computeDashboard } from "@/lib/dashboard";
+import { LATE_AFTER_HOURS, computeDashboard } from "@/lib/dashboard";
 import { ROLE_LABELS, STATUS_LABELS, one } from "@/lib/labels";
 import type { Status } from "@/lib/schema";
 import { getStore } from "@/lib/store";
@@ -101,8 +101,8 @@ export default async function AnalyticsPage({ searchParams }: PageProps<"/dashbo
                 <span>out with someone</span>
               </div>
               <div>
-                <strong>{d.avgDaysOut === null ? "—" : d.avgDaysOut.toFixed(1)}</strong>
-                <span>average days out</span>
+                <strong>{n(d.lateCards)}</strong>
+                <span>late (over {LATE_AFTER_HOURS} hours)</span>
               </div>
             </div>
           </div>

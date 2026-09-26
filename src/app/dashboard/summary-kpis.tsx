@@ -1,10 +1,11 @@
 import Link from "next/link";
-import type { Dashboard } from "@/lib/dashboard";
+import { LATE_AFTER_HOURS, type Dashboard } from "@/lib/dashboard";
 import { n } from "./charts";
 import styles from "./dashboard.module.css";
 import { Icon, type IconName } from "./icons";
 
-const dayText = (d: number | null) => (d === null ? "" : d === 0 ? "today" : `${d} day${d === 1 ? "" : "s"} ago`);
+const howLong = (hours: number) => (hours < 48 ? `${Math.floor(hours)} hours` : `${Math.floor(hours / 24)} days`);
+const dayText =(d: number | null) => (d === null ? "" : d === 0 ? "today" : `${d} day${d === 1 ? "" : "s"} ago`);
 
 /**
  * The four numbers a manager reads first: fleet, utilization, cards waiting to be received, and how long
@@ -17,7 +18,16 @@ export function SummaryKpis({ d, hubParam }: { d: Dashboard; hubParam?: string }
   const unusable = d.total - d.usable;
   const pct = d.utilization === null ? null : Math.round(d.utilization);
 
-  const cards: { key: string; icon: IconName; label: string; value: string; note: string; href: string; meter?: number }[] = [
+  const cards: {
+    key: string;
+    icon: IconName;
+    label: string;
+    value: string;
+    note: string;
+    href: string;
+    meter?: number;
+    warn?: boolean;
+  }[] = [
     {
       key: "fleet",
       icon: "layers",
@@ -44,12 +54,17 @@ export function SummaryKpis({ d, hubParam }: { d: Dashboard; hubParam?: string }
       href: hubParam ? list({ status: "pending,traveling" }) : "/handover/receive",
     },
     {
-      key: "days",
-      icon: "clock",
-      label: "Average days out",
-      value: d.avgDaysOut === null ? "—" : d.avgDaysOut.toFixed(1),
-      note: d.outCount > 0 ? `Since last movement, for the ${n(d.outCount)} cards out now` : "No cards are out",
-      href: list({ status: "pending,traveling,with_fo,with_rig" }),
+      key: "late",
+      icon: "alert",
+      label: "Late cards",
+      value: n(d.lateCards),
+      note:
+        d.lateCards > 0
+          ? `Over ${LATE_AFTER_HOURS} hours · oldest ${howLong(d.oldestLateHours ?? 0)}`
+          : `Nothing over ${LATE_AFTER_HOURS} hours`,
+      // On the main page this jumps to the Needs attention list, which says who to chase.
+      href: hubParam ? list({ status: "with_fo,traveling,pending" }) : "/dashboard#attention",
+      warn: d.lateCards > 0,
     },
   ];
 
@@ -59,7 +74,7 @@ export function SummaryKpis({ d, hubParam }: { d: Dashboard; hubParam?: string }
         <Link key={c.key} href={c.href} className={styles.summary}>
           <span className={styles.summaryTop}>
             <span className={styles.summaryLabel}>{c.label}</span>
-            <span className={styles.summaryIcon}>
+            <span className={`${styles.summaryIcon} ${c.warn ? styles.summaryIconWarn : ""}`}>
               <Icon name={c.icon} size={18} />
             </span>
           </span>
