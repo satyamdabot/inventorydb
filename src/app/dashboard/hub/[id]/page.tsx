@@ -8,6 +8,7 @@ import type { Action, Status } from "@/lib/schema";
 import { getStore } from "@/lib/store";
 import { formatIst } from "@/lib/time";
 import { n } from "../../charts";
+import { Collapsible } from "../../collapsible";
 import styles from "../../dashboard.module.css";
 import { breakdown } from "../../hub-tree-view";
 
@@ -79,6 +80,13 @@ export default async function HubDetailPage({ params, searchParams }: PageProps<
   const team = people
     .filter((p) => inScope.has(p.hub) && p.active !== "false")
     .sort((a, b) => a.role.localeCompare(b.role) || a.name.localeCompare(b.name));
+
+  // "9 IM · 1 FO": how the people split by role, for the collapsed People block.
+  const roleSummary = (["im", "ifo", "fo", "rig"] as const)
+    .map((r) => [r, team.filter((p) => p.role === r).length] as const)
+    .filter(([, count]) => count > 0)
+    .map(([r, count]) => `${count} ${ROLE_LABELS[r]}`)
+    .join(" · ");
 
   const crumbs = pathTo(node);
   const otherName = (hubId: string) => hubName.get(hubId) ?? hubId;
@@ -154,20 +162,23 @@ export default async function HubDetailPage({ params, searchParams }: PageProps<
           </section>
         )}
 
-        <section className={styles.card} aria-label="Cards here">
-          <div className={styles.sectionHead}>
-            <h2>Cards here ({n(here.length)})</h2>
-            {here.length > CARDS_SHOWN && (
-              <Link href={inventory({})} className={styles.link}>
-                See all {n(here.length)} in the inventory list
-              </Link>
-            )}
-          </div>
-          {here.length === 0 ? (
+        {here.length === 0 ? (
+          <section className={styles.card} aria-label="Cards here">
+            <h2>Cards here</h2>
             <p className={styles.muted}>No cards at {withSub ? "this hub or the hubs under it" : "this hub"} right now.</p>
-          ) : (
+          </section>
+        ) : (
+          <Collapsible title="Cards here" count={n(here.length)} meta={breakdown(withSub ? node.total : node.own)}>
+            {here.length > CARDS_SHOWN && (
+              <p className={styles.muted}>
+                Showing the first {CARDS_SHOWN}, cards that are out first.{" "}
+                <Link href={inventory({})} className={styles.link}>
+                  See all {n(here.length)} in the inventory list
+                </Link>
+              </p>
+            )}
             <div className={styles.tableScroll}>
-              <table className={styles.table}>
+              <table className={`${styles.table} ${styles.tableCompact}`}>
                 <thead>
                   <tr>
                     <th>Serial</th>
@@ -192,8 +203,8 @@ export default async function HubDetailPage({ params, searchParams }: PageProps<
                 </tbody>
               </table>
             </div>
-          )}
-        </section>
+          </Collapsible>
+        )}
 
         <div className={styles.grid2}>
           <section className={styles.card} aria-label="Who has cards here">
@@ -297,13 +308,15 @@ export default async function HubDetailPage({ params, searchParams }: PageProps<
           )}
         </section>
 
-        <section className={styles.card} aria-label="People at this hub">
-          <h2>People</h2>
-          {team.length === 0 ? (
+        {team.length === 0 ? (
+          <section className={styles.card} aria-label="People at this hub">
+            <h2>People</h2>
             <p className={styles.muted}>Nobody is listed under {withSub ? "this hub or the hubs under it" : "this hub"} in the People tab.</p>
-          ) : (
+          </section>
+        ) : (
+          <Collapsible title="People" count={n(team.length)} meta={roleSummary}>
             <div className={styles.tableScroll}>
-              <table className={styles.table}>
+              <table className={`${styles.table} ${styles.tableCompact}`}>
                 <thead>
                   <tr>
                     <th>Name</th>
@@ -322,8 +335,8 @@ export default async function HubDetailPage({ params, searchParams }: PageProps<
                 </tbody>
               </table>
             </div>
-          )}
-        </section>
+          </Collapsible>
+        )}
 
         <p className={styles.muted}>
           <Link href="/dashboard" className={styles.link}>
