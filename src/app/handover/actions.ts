@@ -90,6 +90,7 @@ export async function sendCards(formData: FormData) {
       status: plan.items[0]?.status ?? "",
       person: plan.items[0]?.current_holder ?? "",
       hub: plan.items[0]?.current_hub ?? "",
+      batch: plan.events[0]?.batch_id ?? "",
     }),
   );
 }

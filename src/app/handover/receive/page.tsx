@@ -5,8 +5,8 @@ import { one } from "@/lib/labels";
 import { getStore } from "@/lib/store";
 import styles from "../../admin/admin.module.css";
 import { receiveCards } from "../actions";
-import ScanBox from "../ScanBox";
 import HubSelect from "./HubSelect";
+import ReceiveScanArea from "./ReceiveScanArea";
 
 export default async function ReceivePage({ searchParams }: PageProps<"/handover/receive">) {
   const user = await requireRole("admin", "im");
@@ -77,9 +77,7 @@ export default async function ReceivePage({ searchParams }: PageProps<"/handover
 
       <form action={receiveCards} className={styles.list}>
         <input type="hidden" name="hub" value={hub} />
-        <ScanBox
-          id="scanned"
-          mode="receive"
+        <ReceiveScanArea
           hub={hub}
           hubNames={Object.fromEntries(hubNames)}
           items={items.map((i) => ({ id: i.item_id, status: i.status, hub: i.current_hub }))}

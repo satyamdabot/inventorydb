@@ -27,6 +27,8 @@ export default function ScanBox({
   rows = 8,
   hub,
   hubNames = {},
+  autoFocus = true,
+  injected,
 }: {
   id: string;
   items: { id: string; status: Status; hub: string }[];
@@ -34,13 +36,36 @@ export default function ScanBox({
   rows?: number;
   hub?: string; // receive only: the hub chosen in "Receiving at"
   hubNames?: Record<string, string>;
+  autoFocus?: boolean; // false when something else on the page (e.g. a batch code field) should get focus first
+  injected?: { ids: string[]; nonce: number }; // ids to add from elsewhere on the page (e.g. a scanned batch receipt)
 }) {
   const [text, setText] = useState("");
   const [focused, setFocused] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
   useEffect(() => {
-    ref.current?.focus();
+    if (autoFocus) ref.current?.focus();
+    // Only on mount: this reflects where focus should start, not a live sync.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Cards found by a batch lookup are added like scans, skipping ones already in the box. Adjusted during
+  // render (not in an effect): each lookup bumps `nonce`, and noticing it changed here, once, is the
+  // recommended way to react to it without an extra render-then-effect round trip.
+  const [seenNonce, setSeenNonce] = useState(injected?.nonce ?? 0);
+  if (injected && injected.nonce !== seenNonce) {
+    setSeenNonce(injected.nonce);
+    const already = new Set(
+      text
+        .split(/\r?\n/)
+        .map((s) => s.trim())
+        .filter(Boolean),
+    );
+    const toAdd = injected.ids.filter((id) => !already.has(id));
+    if (toAdd.length > 0) {
+      const base = text.trim();
+      setText(base ? `${base}\n${toAdd.join("\n")}\n` : `${toAdd.join("\n")}\n`);
+    }
+  }
 
   const statuses = useMemo(() => new Map<string, string>(items.map((i) => [i.id, i.status])), [items]);
   const results = useMemo(() => {

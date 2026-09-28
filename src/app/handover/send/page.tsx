@@ -66,7 +66,8 @@ export default async function SendPage({ searchParams }: PageProps<"/handover/se
       <h1>Send cards</h1>
       {one(sp.done) && (
         <p className={styles.ok}>
-          Sent {one(sp.done)} card(s) to {toPerson} at {toHubName}. Status: {status}.
+          Sent {one(sp.done)} card(s) to {toPerson} at {toHubName}. Status: {status}.{" "}
+          {one(sp.batch) && <Link href={`/handover/receipt/${one(sp.batch)}`}>View / print receipt →</Link>}
         </p>
       )}
       {one(sp.error) && <p className={styles.error}>{one(sp.error)}</p>}
