@@ -5,7 +5,7 @@ import type { Hub, Item, Status } from "../src/lib/schema";
 const hub = (id: string, parent = ""): Hub => ({ hub_id: id, name: id, city: id, is_central: "false", active: "true", parent_hub: parent });
 const card = (id: string, at: string, status: Status = "in_stock", home = "blr"): Item => ({
   item_id: id, item_type: "sd_card", home_hub: home, current_hub: at, status, current_holder: "", last_event_id: "",
-  updated_at: "", attributes: "", prism_no: "", brand: "", model: "",
+  updated_at: "", attributes: "", prism_no: "", brand: "", model: "", price: "",
 });
 
 // Bangalore is the main hub. Kadapa and Hyderabad sit under it, and Kadapa-2 sits under Kadapa.

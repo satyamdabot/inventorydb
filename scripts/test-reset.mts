@@ -5,7 +5,7 @@ import type { Item } from "../src/lib/schema";
 const card = (over: Partial<Item> = {}): Item => ({
   item_id: "SD-1", item_type: "sd_card", home_hub: "bangalore", current_hub: "kadapa", status: "with_fo",
   current_holder: "p-ravi", last_event_id: "e-99", updated_at: "2026-09-25T19:14:54+05:30",
-  attributes: '{"x":1}', prism_no: "B584-4E36", brand: "SanDisk", model: "Extreme A2 V30", ...over,
+  attributes: '{"x":1}', prism_no: "B584-4E36", brand: "SanDisk", model: "Extreme A2 V30", price: "7500", ...over,
 });
 
 // A card that has been out and about goes back to in stock at its home hub, held by nobody, with no history.

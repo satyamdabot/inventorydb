@@ -8,7 +8,7 @@ const person = (id: string, role: Person["role"]): Person => ({ person_id: id, n
 const people = [person("fo-ravi", "fo"), person("im-kad", "im")];
 const item = (id: string, over: Partial<Item> = {}): Item => ({
   item_id: id, item_type: "sd_card", home_hub: "bangalore", current_hub: "bangalore", status: "in_stock",
-  current_holder: "", last_event_id: "", updated_at: "", attributes: "", prism_no: "", brand: "", model: "", ...over,
+  current_holder: "", last_event_id: "", updated_at: "", attributes: "", prism_no: "", brand: "", model: "", price: "", ...over,
 });
 const event = (id: string, item_id: string, over: Partial<ItemEvent> = {}): ItemEvent => ({
   event_id: id, batch_id: "b", item_id, action: "check_out", from_person: "", to_person: "", from_id: "", to_id: "", from_hub: "", hub: "kadapa",

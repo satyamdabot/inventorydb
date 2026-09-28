@@ -21,6 +21,7 @@ const item = (id: string, over: Partial<Item> = {}): Item => ({
   prism_no: "",
   brand: "",
   model: "",
+  price: "",
   ...over,
 });
 const event = (id: string, item_id: string, over: Partial<ItemEvent> = {}): ItemEvent => ({

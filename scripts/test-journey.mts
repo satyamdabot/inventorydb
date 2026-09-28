@@ -18,7 +18,7 @@ const people = [
 let items: Item[] = [
   {
     item_id: "SD-1", item_type: "sd_card", home_hub: "bangalore", current_hub: "bangalore", status: "in_stock",
-    current_holder: "", last_event_id: "", updated_at: "", attributes: "", prism_no: "", brand: "", model: "",
+    current_holder: "", last_event_id: "", updated_at: "", attributes: "", prism_no: "", brand: "", model: "", price: "",
   },
 ];
 const events: ItemEvent[] = [];

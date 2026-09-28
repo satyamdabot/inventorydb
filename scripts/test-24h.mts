@@ -15,7 +15,7 @@ const people = [
 ];
 const card = (id: string): Item => ({
   item_id: id, item_type: "sd_card", home_hub: "bangalore", current_hub: "bangalore", status: "in_stock",
-  current_holder: "", last_event_id: "", updated_at: "", attributes: "", prism_no: "", brand: "", model: "",
+  current_holder: "", last_event_id: "", updated_at: "", attributes: "", prism_no: "", brand: "", model: "", price: "",
 });
 
 let items = ["SD-1", "SD-2", "SD-3", "SD-4", "SD-5"].map(card);

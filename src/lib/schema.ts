@@ -15,6 +15,7 @@ export const TABS = {
     "prism_no",
     "brand",
     "model", // SD card model name
+    "price",
   ],
   events: [
     "event_id",
@@ -88,6 +89,7 @@ export interface Item extends Row {
   prism_no: string;
   brand: string;
   model: string;
+  price: string;
 }
 
 export interface ItemEvent extends Row {

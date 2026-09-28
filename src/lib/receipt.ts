@@ -4,7 +4,7 @@ export interface ReceiptLine {
   itemId: string;
   brand: string;
   model: string;
-  prismNo: string;
+  price: string; // raw, as stored; format with formatPrice() for display
   statusAfter: Status;
 }
 
@@ -18,6 +18,19 @@ export interface BatchSummary {
   hubName: string;
   note: string;
   items: ReceiptLine[];
+  totalPrice: number | null; // sum of every priced card, null when none of them have a usable price
+}
+
+/** "7500" -> "₹7,500". Blank or unparseable input (a card with no price on file) shows as nothing. */
+export function formatPrice(raw: string): string {
+  const n = Number(raw);
+  if (raw.trim() === "" || !Number.isFinite(n)) return "";
+  return `₹${n.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
+}
+
+function parsePrice(raw: string): number | undefined {
+  const n = Number(raw);
+  return raw.trim() !== "" && Number.isFinite(n) ? n : undefined;
 }
 
 /**
@@ -59,11 +72,13 @@ export function summarizeBatch(
         itemId: r.item_id,
         brand: item?.brand ?? "",
         model: item?.model ?? "",
-        prismNo: item?.prism_no ?? "",
+        price: item?.price ?? "",
         statusAfter: r.status_after,
       };
     })
     .sort((a, b) => a.itemId.localeCompare(b.itemId));
+
+  const prices = lines.map((l) => parsePrice(l.price)).filter((n): n is number => n !== undefined);
 
   return {
     batchId,
@@ -75,5 +90,6 @@ export function summarizeBatch(
     hubName,
     note: first.note,
     items: lines,
+    totalPrice: prices.length ? prices.reduce((a, b) => a + b, 0) : null,
   };
 }

@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { toDataURL as qrToDataURL } from "qrcode";
 import { requireRole } from "@/lib/authz";
 import { STATUS_LABELS } from "@/lib/labels";
-import { summarizeBatch } from "@/lib/receipt";
+import { formatPrice, summarizeBatch } from "@/lib/receipt";
 import type { Status } from "@/lib/schema";
 import { getStore } from "@/lib/store";
 import { formatIst } from "@/lib/time";
@@ -77,7 +77,7 @@ export default async function ReceiptPage({ params }: PageProps<"/handover/recei
               <th>Serial</th>
               <th>Brand</th>
               <th>Model</th>
-              <th>Prism no.</th>
+              <th>Price</th>
               <th>Status</th>
             </tr>
           </thead>
@@ -88,11 +88,22 @@ export default async function ReceiptPage({ params }: PageProps<"/handover/recei
                 <td>{i.itemId}</td>
                 <td>{i.brand}</td>
                 <td>{i.model}</td>
-                <td>{i.prismNo}</td>
+                <td>{formatPrice(i.price)}</td>
                 <td>{STATUS_LABELS[i.statusAfter as Status] ?? i.statusAfter}</td>
               </tr>
             ))}
           </tbody>
+          {summary.totalPrice !== null && (
+            <tfoot>
+              <tr>
+                <td colSpan={4}></td>
+                <td>
+                  <strong>{formatPrice(String(summary.totalPrice))}</strong>
+                </td>
+                <td></td>
+              </tr>
+            </tfoot>
+          )}
         </table>
 
         <p className={styles.muted}>
