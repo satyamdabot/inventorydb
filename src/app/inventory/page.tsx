@@ -4,7 +4,7 @@ import { STATUS_LABELS, one } from "@/lib/labels";
 import { STATUSES, type Status } from "@/lib/schema";
 import { getStore } from "@/lib/store";
 import styles from "../admin/admin.module.css";
-import { applyCorrection } from "./actions";
+import { addItem, applyCorrection } from "./actions";
 import CorrectionPanel from "./CorrectionPanel";
 
 const PAGE_SIZE = 100;
@@ -42,6 +42,7 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
   const pages = Math.max(1, Math.ceil(matches.length / PAGE_SIZE));
   const shown = matches.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
   const sortedHubs = [...hubs].sort((a, b) => a.name.localeCompare(b.name));
+  const activeHubs = sortedHubs.filter((h) => h.active !== "false");
 
   const pageLink = (p: number) => {
     const params = new URLSearchParams({ ...(q && { q }), ...(status && { status }), ...(hub && { hub }), ...(holder && { holder }), page: String(p) });
@@ -94,7 +95,6 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
       </p>
       <div className={styles.pageHead}>
         <h1>Inventory</h1>
-        {canAdd && <Link href="/inventory/add">+ Add a card</Link>}
       </div>
       {one(sp.done) && (
         <p className={styles.ok}>
@@ -103,6 +103,40 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
         </p>
       )}
       {one(sp.error) && <p className={styles.error}>{one(sp.error)}</p>}
+
+      {canAdd && (
+        <details className={styles.details}>
+          <summary>+ Add a card</summary>
+          <p className={styles.muted}>
+            For a card that isn&apos;t in the inventory yet. It starts in stock at the hub you choose, with
+            its own history from today.
+          </p>
+          {one(sp.added) && (
+            <p className={styles.ok}>
+              Added {one(sp.added)}. <Link href={`/inventory/${one(sp.added)}`}>View it</Link>, or add another below.
+            </p>
+          )}
+          {one(sp.addError) && <p className={styles.error}>{one(sp.addError)}</p>}
+          <form action={addItem} className={styles.row}>
+            <input name="itemId" placeholder="Serial (scan or type)" required autoComplete="off" />
+            <select name="homeHub" defaultValue="" required aria-label="Home hub">
+              <option value="" disabled>
+                Home hub
+              </option>
+              {activeHubs.map((h) => (
+                <option key={h.hub_id} value={h.hub_id}>
+                  {h.name}
+                </option>
+              ))}
+            </select>
+            <input name="prismNo" placeholder="Prism no." />
+            <input name="brand" placeholder="Brand" />
+            <input name="model" placeholder="Model" />
+            <input name="price" placeholder="Price" inputMode="decimal" />
+            <button type="submit">Add card</button>
+          </form>
+        </details>
+      )}
 
       <form className={styles.row} method="get">
         <input name="q" defaultValue={one(sp.q)} placeholder="Search serial, prism no., brand or model" />

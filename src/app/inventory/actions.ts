@@ -3,6 +3,7 @@
 import { randomUUID } from "node:crypto";
 import { redirect } from "next/navigation";
 import { requireRole } from "@/lib/authz";
+import { planAddItem } from "@/lib/add-item";
 import { planCorrection } from "@/lib/correction";
 import { getStore } from "@/lib/store";
 import { istTimestamp } from "@/lib/time";
@@ -61,4 +62,30 @@ export async function applyCorrection(formData: FormData) {
 
   if (plan.items.length) await store.commitBatch(plan.events, plan.items);
   redirect(backTo(back, { done: String(plan.items.length), same: String(plan.unchanged.length) }));
+}
+
+/** Register a brand-new card, in stock at the chosen hub. Admin or IM. */
+export async function addItem(formData: FormData) {
+  const user = await requireRole("admin", "im");
+  const input = {
+    itemId: String(formData.get("itemId") ?? ""),
+    homeHub: String(formData.get("homeHub") ?? ""),
+    prismNo: String(formData.get("prismNo") ?? ""),
+    brand: String(formData.get("brand") ?? ""),
+    model: String(formData.get("model") ?? ""),
+    price: String(formData.get("price") ?? ""),
+  };
+
+  const store = getStore();
+  const [items, hubs] = await Promise.all([store.list("items"), store.list("hubs")]);
+  const plan = planAddItem(input, items, {
+    hubs,
+    by: user.email ?? "unknown",
+    now: istTimestamp(),
+    newId: (prefix) => `${prefix}-${randomUUID().slice(0, 8)}`,
+  });
+  if (plan.errors.length) redirect(`/inventory?${new URLSearchParams({ addError: plan.errors.join(" ") })}`);
+
+  await store.commitBatch([plan.event!], [plan.item!]);
+  redirect(`/inventory?${new URLSearchParams({ added: plan.item!.item_id })}`);
 }

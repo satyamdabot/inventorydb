@@ -23,7 +23,6 @@ const WORK: Tile[] = [
   { href: "/inventory", title: "Inventory", desc: "Search, filter and open any card and its history.", icon: "list", roles: ["admin", "im", "rig"] },
   { href: "/handover/send", title: "Send cards", desc: "Hand cards to an IM, IFO, FO, the rig team or a hub.", icon: "send", roles: HANDLERS },
   { href: "/handover/receive", title: "Receive cards", desc: "Take cards back into stock at a hub.", icon: "inbox", roles: HANDLERS },
-  { href: "/inventory/add", title: "Add a card", desc: "Register a card that isn't in the inventory yet.", icon: "list", roles: ["admin", "im"] },
   { href: "/admin/people", title: "Manage people", desc: "The IMs, IFOs, FOs and rig team.", icon: "users", roles: ["admin", "im"] },
 ];
 
