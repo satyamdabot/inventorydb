@@ -35,7 +35,7 @@ export interface PendingRow {
  * How long cards may be with each kind of holder before they are flagged. A card is late once it has been
  * out for MORE than this many hours since the handover. Exactly on the limit is not late.
  */
-export const LATE_AFTER_HOURS = 24;
+export const LATE_AFTER_HOURS = 12;
 
 export interface LateGroup {
   kind: "fo" | "ifo" | "pending";
@@ -62,7 +62,7 @@ export interface Dashboard {
   total: number;
   byStatus: Record<Status, number>;
   outCount: number;
-  lateCards: number; // cards past the 24-hour rules (see `late` for who to chase)
+  lateCards: number; // cards past the LATE_AFTER_HOURS rules (see `late` for who to chase)
   oldestLateHours: number | null;
   usable: number; // cards that can be used: not lost, damaged or retired
   utilization: number | null; // cards out ÷ usable cards, as a percentage. null when there are no usable cards
@@ -106,7 +106,7 @@ export function computeDashboard(
     const t = lastAt.get(item.item_id) ?? Date.parse(item.updated_at);
     return Number.isNaN(t) ? null : Math.max(0, Math.floor((opts.now.getTime() - t) / DAY));
   };
-  // Hours since the last movement, to the minute, for the 24-hour rules.
+  // Hours since the last movement, to the minute, for the LATE_AFTER_HOURS rules.
   const ageHours = (item: Item): number | null => {
     const t = lastAt.get(item.item_id) ?? Date.parse(item.updated_at);
     return Number.isNaN(t) ? null : Math.max(0, (opts.now.getTime() - t) / 3_600_000);

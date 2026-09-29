@@ -5,7 +5,8 @@ import type { Hub, Item, ItemEvent, Person } from "../src/lib/schema";
 import { istTimestamp } from "../src/lib/time";
 
 // End to end: real sends and receives with the timestamps the app really writes (IST, +05:30), then the
-// dashboard's 24-hour flags checked just before, exactly at, and just after the limit.
+// dashboard's late flags checked just before, exactly at, and just after LATE_AFTER_HOURS. Every boundary
+// below is written relative to that constant (L), so this test still makes sense if the limit changes.
 const hub = (id: string): Hub => ({ hub_id: id, name: id, city: id, is_central: id === "bangalore" ? "true" : "false", active: "true", parent_hub: "" });
 const hubs = [hub("bangalore"), hub("hyderabad")];
 const person = (id: string, role: Person["role"], h: string): Person => ({ person_id: id, name: id, role, hub: h, linked_user: "", active: "true" });
@@ -23,6 +24,7 @@ const events: ItemEvent[] = [];
 let ids = 0;
 const MIN = 60_000;
 const HOUR = 60 * MIN;
+const L = LATE_AFTER_HOURS; // the real limit, whatever it's currently set to
 const T0 = new Date("2026-09-26T04:30:00Z"); // 10:00 in India
 
 const ctxAt = (t: Date, actor: string): HandoverContext => ({
@@ -41,6 +43,8 @@ const late = (at: Date) => computeDashboard(items, events, people, hubs, { hub: 
 const kinds = (at: Date) => late(at).map((g) => `${g.kind}:${g.key}:${g.count}`).sort();
 const after = (ms: number) => new Date(T0.getTime() + ms);
 
+assert.ok(L > 1, "this test assumes the limit is at least a couple of hours");
+
 // 10:00 IST: one card to an FO, one to an IFO heading to Hyderabad, one sent to Hyderabad's IM, one to the rig team.
 send(T0, "SD-1", "fo-ravi", "bangalore");
 send(T0, "SD-2", "ifo-amit", "hyderabad");
@@ -50,44 +54,47 @@ send(T0, "SD-4", "rig-s", "bangalore");
 // The saved timestamp really is IST, and reads back as the same moment.
 assert.equal(events[0].occurred_at, "2026-09-26T10:00:00+05:30");
 assert.equal(Date.parse(events[0].occurred_at), T0.getTime());
-assert.equal(LATE_AFTER_HOURS, 24);
 
-// Just before 24 hours, and exactly 24 hours: nothing is late.
+// Just before the limit, and exactly at it: nothing is late.
 assert.deepEqual(kinds(after(1 * HOUR)), []);
-assert.deepEqual(kinds(after(23 * HOUR + 59 * MIN)), []);
-assert.deepEqual(kinds(after(24 * HOUR)), []); // exactly on the limit is not late
+assert.deepEqual(kinds(after((L - 1) * HOUR + 59 * MIN)), []);
+assert.deepEqual(kinds(after(L * HOUR)), []); // exactly on the limit is not late
 // A minute over: the FO, the IFO and the unreceived hub send are flagged. The rig team has no rule. Stock never is.
-assert.deepEqual(kinds(after(24 * HOUR + MIN)), ["fo:fo-ravi:1", "ifo:ifo-amit:1", "pending:hyderabad:1"]);
-assert.deepEqual(kinds(after(200 * HOUR)), ["fo:fo-ravi:1", "ifo:ifo-amit:1", "pending:hyderabad:1"]); // and stays flagged
+assert.deepEqual(kinds(after(L * HOUR + MIN)), ["fo:fo-ravi:1", "ifo:ifo-amit:1", "pending:hyderabad:1"]);
+assert.deepEqual(kinds(after((L + 100) * HOUR)), ["fo:fo-ravi:1", "ifo:ifo-amit:1", "pending:hyderabad:1"]); // and stays flagged
 
-// The headline numbers agree: 3 late cards, the oldest 24 hours and a minute.
-const at25 = computeDashboard(items, events, people, hubs, { hub: "", days: 7, now: after(24 * HOUR + MIN) });
-assert.equal(at25.lateCards, 3);
-assert.equal(Math.round(at25.oldestLateHours! * 60), 24 * 60 + 1);
+// The headline numbers agree: 3 late cards, the oldest right at the limit plus a minute.
+const atLimitPlus = computeDashboard(items, events, people, hubs, { hub: "", days: 7, now: after(L * HOUR + MIN) });
+assert.equal(atLimitPlus.lateCards, 3);
+assert.equal(Math.round(atLimitPlus.oldestLateHours! * 60), L * 60 + 1);
 
-// Day two, 10:00 IST: the IFO's cards arrive at Hyderabad and the IM there receives the pending one (26 h in).
-receive(after(26 * HOUR), "SD-2", "hyderabad");
-receive(after(26 * HOUR), "SD-3", "hyderabad");
-assert.deepEqual(kinds(after(26 * HOUR)), ["fo:fo-ravi:1"]); // only the FO is still holding cards
+// Some time later: the IFO's cards arrive at Hyderabad and the IM there receives the pending one.
+const day2 = after((L + 2) * HOUR);
+receive(day2, "SD-2", "hyderabad");
+receive(day2, "SD-3", "hyderabad");
+assert.deepEqual(kinds(day2), ["fo:fo-ravi:1"]); // only the FO is still holding cards
 
-// The FO brings the card back, 30 hours in: nothing is late any more.
-receive(after(30 * HOUR), "SD-1", "bangalore");
-assert.deepEqual(kinds(after(30 * HOUR)), []);
-assert.deepEqual(kinds(after(500 * HOUR)), []); // received cards are never flagged later
+// The FO brings the card back: nothing is late any more.
+const returned = after((L + 6) * HOUR);
+receive(returned, "SD-1", "bangalore");
+assert.deepEqual(kinds(returned), []);
+assert.deepEqual(kinds(after((L + 200) * HOUR)), []); // received cards are never flagged later
 
-// Sending the same card out again starts a fresh 24 hours, not the old one.
-const second = after(31 * HOUR);
+// Sending the same card out again starts a fresh clock, not the old one.
+const second = after((L + 7) * HOUR);
 send(second, "SD-1", "fo-ravi", "bangalore");
-assert.deepEqual(kinds(new Date(second.getTime() + 23 * HOUR)), []);
-assert.deepEqual(kinds(new Date(second.getTime() + 24 * HOUR)), []);
-assert.deepEqual(kinds(new Date(second.getTime() + 24 * HOUR + MIN)), ["fo:fo-ravi:1"]);
+assert.deepEqual(kinds(new Date(second.getTime() + (L - 1) * HOUR)), []);
+assert.deepEqual(kinds(new Date(second.getTime() + L * HOUR)), []);
+assert.deepEqual(kinds(new Date(second.getTime() + L * HOUR + MIN)), ["fo:fo-ravi:1"]);
 
 // Several cards with one FO are one line, counted together, with the oldest time.
-send(after(40 * HOUR), "SD-5", "fo-ravi", "bangalore");
-// At 64h05m in: SD-1 went out at 31h (33h05m ago) and SD-5 at 40h (24h05m ago). Both are past 24 hours.
-const many = late(after(64 * HOUR + 5 * MIN)).filter((g) => g.kind === "fo");
+const third = after((L + 16) * HOUR);
+send(third, "SD-5", "fo-ravi", "bangalore");
+const checkAt = new Date(third.getTime() + L * HOUR + 5 * MIN); // SD-5 (sent at `third`) is just past the limit here
+const many = late(checkAt).filter((g) => g.kind === "fo");
 assert.equal(many.length, 1); // one line for Ravi, not one per card
 assert.equal(many[0].count, 2);
-assert.equal(Math.round(many[0].oldestHours * 60), 33 * 60 + 5); // the oldest card's time, 33h05m
+const sd1AgeMin = Math.round((checkAt.getTime() - second.getTime()) / MIN); // SD-1 (sent at `second`) is the older of the two
+assert.equal(Math.round(many[0].oldestHours * 60), sd1AgeMin);
 
-console.log("24 hour tests passed");
+console.log("late-hours tests passed");

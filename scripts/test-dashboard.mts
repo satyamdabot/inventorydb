@@ -1,5 +1,5 @@
 ﻿import assert from "node:assert/strict";
-import { computeDashboard } from "../src/lib/dashboard";
+import { computeDashboard, LATE_AFTER_HOURS } from "../src/lib/dashboard";
 import type { Hub, Item, ItemEvent, Person } from "../src/lib/schema";
 
 const hub = (id: string): Hub => ({ hub_id: id, name: id, city: id, is_central: "false", active: "true", parent_hub: "" });
@@ -60,32 +60,33 @@ assert.equal(t.utilization, 100); // 4 of 4 usable are out
 const allLost = items.map((i) => ({ ...i, status: "lost" as const }));
 assert.equal(computeDashboard(allLost, events, people, hubs, { hub: "", days: 7, now }).utilization, null);
 
-// Needs attention: an FO or IFO holding cards, or cards sent to a hub, for MORE than 24 hours.
+// Needs attention: an FO or IFO holding cards, or cards sent to a hub, for MORE than LATE_AFTER_HOURS.
 const H = 3_600_000;
+const L = LATE_AFTER_HOURS;
 const hoursAgo = (h: number) => new Date(now.getTime() - h * H).toISOString();
 const lateItems = [
   item("F1", { status: "with_fo", current_holder: "fo-ravi", current_hub: "kadapa" }), // 30 h: late
   item("F2", { status: "with_fo", current_holder: "fo-ravi", current_hub: "kadapa" }), // 50 h: late
   item("F3", { status: "with_fo", current_holder: "fo-ravi", current_hub: "kadapa" }), // 5 h: fine
-  item("F4", { status: "with_fo", current_holder: "fo-ravi", current_hub: "kadapa" }), // exactly 24 h: not late
-  item("F5", { status: "with_fo", current_holder: "fo-ravi", current_hub: "kadapa" }), // 24 h and 1 minute: late
+  item("F4", { status: "with_fo", current_holder: "fo-ravi", current_hub: "kadapa" }), // exactly at the limit: not late
+  item("F5", { status: "with_fo", current_holder: "fo-ravi", current_hub: "kadapa" }), // the limit plus 1 minute: late
   item("T1", { status: "traveling", current_holder: "ifo-amit" }), // 40 h: late
   item("T2", { status: "traveling", current_holder: "ifo-amit" }), // 3 h: fine
   item("P1", { status: "pending", current_holder: "im-kad", current_hub: "kadapa" }), // 26 h: late
-  item("R1", { status: "with_rig", current_holder: "rig-s" }), // 300 h: the rig team has no 24 hour rule
+  item("R1", { status: "with_rig", current_holder: "rig-s" }), // 300 h: the rig team has no late rule
   item("S1"), // in stock for ever: never late
 ];
 const lateEvents = [
   event("L1", "F1", { occurred_at: hoursAgo(30) }), event("L2", "F2", { occurred_at: hoursAgo(50) }),
-  event("L3", "F3", { occurred_at: hoursAgo(5) }), event("L4", "F4", { occurred_at: hoursAgo(24) }),
-  event("L5", "F5", { occurred_at: hoursAgo(24 + 1 / 60) }), event("L6", "T1", { occurred_at: hoursAgo(40) }),
+  event("L3", "F3", { occurred_at: hoursAgo(5) }), event("L4", "F4", { occurred_at: hoursAgo(L) }),
+  event("L5", "F5", { occurred_at: hoursAgo(L + 1 / 60) }), event("L6", "T1", { occurred_at: hoursAgo(40) }),
   event("L7", "T2", { occurred_at: hoursAgo(3) }), event("L8", "P1", { occurred_at: hoursAgo(26) }),
   event("L9", "R1", { occurred_at: hoursAgo(300) }), event("L10", "S1", { occurred_at: hoursAgo(900) }),
 ];
 const latePeople = [...people, person("ifo-amit", "ifo"), person("rig-s", "rig")];
 const lateDash = computeDashboard(lateItems, lateEvents, latePeople, hubs, { hub: "", days: 7, now });
 const fo = lateDash.late.find((g) => g.kind === "fo")!;
-assert.deepEqual([fo.key, fo.label, fo.count], ["fo-ravi", "fo-ravi", 3]); // F1, F2 and the one 1 minute over. Not F3, not exactly 24 h
+assert.deepEqual([fo.key, fo.label, fo.count], ["fo-ravi", "fo-ravi", 3]); // F1, F2 and the one 1 minute over. Not F3, not exactly at the limit
 assert.equal(Math.round(fo.oldestHours), 50);
 const ifo = lateDash.late.find((g) => g.kind === "ifo")!;
 assert.deepEqual([ifo.key, ifo.count], ["ifo-amit", 1]);
