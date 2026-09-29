@@ -51,7 +51,10 @@ export default async function SendPage({ searchParams }: PageProps<"/handover/se
     label: g.label,
     people: recipients
       .filter((p) => p.role === g.role)
-      .map((p) => ({ id: p.person_id, label: `${p.name} (${hubName.get(p.hub) ?? p.hub})` })),
+      .map((p) => ({
+        id: p.person_id,
+        label: `${p.name} (${hubName.get(p.hub) ?? p.hub})${p.linked_user ? ` — ${p.linked_user}` : ""}`,
+      })),
   })).filter((g) => g.people.length > 0);
 
   const toPerson = people.find((p) => p.person_id === one(sp.person))?.name ?? one(sp.person);
