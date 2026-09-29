@@ -26,7 +26,7 @@ async function baseUrl() {
 }
 
 export default async function ReceiptPage({ params }: PageProps<"/handover/receipt/[batch]">) {
-  await requireRole("admin", "im");
+  await requireRole("admin", "im", "rig");
   const { batch } = await params;
   const store = getStore();
   const [events, items, hubs] = await Promise.all([store.list("events"), store.list("items"), store.list("hubs")]);

@@ -18,7 +18,7 @@ async function run(
   path: string,
   build: (targets: Item[], ctx: HandoverContext) => HandoverPlan | Promise<HandoverPlan>,
   summary: (plan: HandoverPlan) => Record<string, string>,
-) {  const user = await requireRole("admin", "im");
+) {  const user = await requireRole("admin", "im", "rig");
   const ids = collectIds(String(formData.get("scanned") ?? ""), formData.getAll("ids").map(String));
   if (!ids.length) redirect(go(path, { error: "Scan or tick at least one card." }));
 
@@ -43,7 +43,7 @@ async function run(
       go(path, {
         error: isAdmin
           ? "Choose an IM or admin for who is recording this handover."
-          : "Your login is not linked to an active IM. Ask an admin to link you on the Users screen.",
+          : "Your login is not linked to an active IM or rig team member. Ask an admin to link you on the Users screen.",
       }),
     );
   }

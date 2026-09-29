@@ -12,6 +12,7 @@ const people = [
   person("p-asha", "Asha", "im"),
   person("p-old", "Old IM", "im", "false"),
   person("p-ravi", "Ravi", "fo"),
+  person("p-suresh", "Suresh", "rig"),
 ];
 const users = [
   user("Sraj@x.com", "admin"),
@@ -21,11 +22,12 @@ const users = [
 ];
 
 const options = actorOptions(people, users, (h) => h.toUpperCase());
-assert.deepEqual(options.map((o) => o.value), ["p-asha", "p-mihir", "sraj@x.com"]);
+assert.deepEqual(options.map((o) => o.value), ["p-asha", "p-mihir", "p-suresh", "sraj@x.com"]);
 assert.equal(options[1].label, "Mihir (IM, BANGALORE)");
-assert.equal(options[2].label, "Sraj@x.com (Admin)");
+assert.equal(options[2].label, "Suresh (Rig, BANGALORE)");
+assert.equal(options[3].label, "Sraj@x.com (Admin)");
 
-// Only IMs and admins: not FOs, not inactive people, not inactive admins.
+// IMs and rig team members, plus admins: not FOs, not inactive people, not inactive admins.
 assert.ok(!options.some((o) => ["p-ravi", "p-old", "gone@x.com"].includes(o.value)));
 
 // Default is the linked person, or the admin's email in lower case.
@@ -39,7 +41,7 @@ assert.equal(resolveActor("", options), undefined);
 
 // Admins may act as anyone on the list. An IM may only act as themselves.
 const admin = { role: "admin" as const, personId: "", email: "Sraj@x.com" };
-assert.deepEqual(allowedActors(admin, options).map((o) => o.value), ["p-asha", "p-mihir", "sraj@x.com"]);
+assert.deepEqual(allowedActors(admin, options).map((o) => o.value), ["p-asha", "p-mihir", "p-suresh", "sraj@x.com"]);
 
 const mihir = { role: "im" as const, personId: "p-mihir", email: "mihir@x.com" };
 assert.deepEqual(allowedActors(mihir, options).map((o) => o.value), ["p-mihir"]);
@@ -47,6 +49,12 @@ assert.deepEqual(allowedActors(mihir, options).map((o) => o.value), ["p-mihir"])
 assert.equal(resolveActor("p-asha", allowedActors(mihir, options)), undefined);
 assert.equal(resolveActor("sraj@x.com", allowedActors(mihir, options)), undefined);
 assert.equal(resolveActor("p-mihir", allowedActors(mihir, options)), "p-mihir");
+
+// A rig team member gets exactly the same treatment as an IM: only themselves, same as everyone non-admin.
+const suresh = { role: "rig" as const, personId: "p-suresh", email: "suresh@x.com" };
+assert.deepEqual(allowedActors(suresh, options).map((o) => o.value), ["p-suresh"]);
+assert.equal(resolveActor("p-mihir", allowedActors(suresh, options)), undefined);
+assert.equal(resolveActor("p-suresh", allowedActors(suresh, options)), "p-suresh");
 
 // An IM whose login is not linked to a person, or linked to someone inactive, gets no options at all.
 assert.deepEqual(allowedActors({ role: "im", personId: "", email: "new@x.com" }, options), []);

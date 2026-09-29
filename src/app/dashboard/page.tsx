@@ -44,7 +44,7 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
   const tree = buildHubTree(hubs, items);
   const showEmpty = one(sp.empty) === "1";
   const hiddenEmpty = countHidden(tree, false);
-  const canHandle = user.role === "admin" || user.role === "im";
+  const canHandle = user.role === "admin" || user.role === "im" || user.role === "rig";
   const activeHubs = hubs.filter((h) => h.active !== "false").length;
 
   const s = d.byStatus;

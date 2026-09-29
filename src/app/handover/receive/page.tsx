@@ -9,7 +9,7 @@ import HubSelect from "./HubSelect";
 import ReceiveScanArea from "./ReceiveScanArea";
 
 export default async function ReceivePage({ searchParams }: PageProps<"/handover/receive">) {
-  const user = await requireRole("admin", "im");
+  const user = await requireRole("admin", "im", "rig");
   const sp = await searchParams;
   const store = getStore();
   const [items, hubs, people, users] = await Promise.all([
@@ -96,7 +96,7 @@ export default async function ReceivePage({ searchParams }: PageProps<"/handover
               Received by: <strong>{byOptions[0].label}</strong>
             </span>
           ) : (
-            <span className={styles.error}>Your login is not linked to an active IM. Ask an admin to link you.</span>
+            <span className={styles.error}>Your login is not linked to an active IM or rig team member. Ask an admin to link you.</span>
           )}
           <input name="expected" type="number" min="0" placeholder="Expected count (optional)" />
           <input name="note" placeholder="Note (optional)" />

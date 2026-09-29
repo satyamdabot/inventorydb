@@ -15,7 +15,7 @@ interface Tile {
   roles: Role[];
 }
 
-const HANDLERS: Role[] = ["admin", "im"];
+const HANDLERS: Role[] = ["admin", "im", "rig"];
 
 // What each section is for, in one line. A tile only shows for the roles that can open it.
 const WORK: Tile[] = [

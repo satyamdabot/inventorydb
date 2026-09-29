@@ -17,7 +17,7 @@ export interface BatchLookupResult {
  * directly rather than redirecting, so it can be called from a client component without a page reload.
  */
 export async function lookupBatch(raw: string): Promise<BatchLookupResult> {
-  await requireRole("admin", "im");
+  await requireRole("admin", "im", "rig");
   const batchId = extractBatchId(raw);
   if (!batchId) return { ok: false, message: "Scan or paste a batch receipt first.", ids: [] };
 

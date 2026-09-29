@@ -18,7 +18,7 @@ const GROUPS: { role: Role; label: string }[] = [
 ];
 
 export default async function SendPage({ searchParams }: PageProps<"/handover/send">) {
-  const user = await requireRole("admin", "im");
+  const user = await requireRole("admin", "im", "rig");
   const sp = await searchParams;
   const store = getStore();
   const [people, hubs, users, items] = await Promise.all([
@@ -98,7 +98,7 @@ export default async function SendPage({ searchParams }: PageProps<"/handover/se
               </>
             ) : (
               <p className={styles.error}>
-                Your login is not linked to an active IM, so you can&apos;t send yet. Ask an admin to link you on the Users screen.
+                Your login is not linked to an active IM or rig team member, so you can&apos;t send yet. Ask an admin to link you on the Users screen.
               </p>
             )}
           </div>

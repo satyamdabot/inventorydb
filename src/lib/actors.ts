@@ -6,15 +6,15 @@ export interface ActorOption {
 }
 
 /**
- * Who can be named as the person sending or receiving: every active IM, plus every active admin
- * who is not already covered by a linked IM entry. The signed-in account is always recorded
+ * Who can be named as the person sending or receiving: every active IM or rig team member, plus every
+ * active admin who is not already covered by a linked entry. The signed-in account is always recorded
  * separately as `recorded_by`, so naming someone else here never hides who really did it.
  */
 export function actorOptions(people: Person[], users: AppUser[], hubName: (hubId: string) => string): ActorOption[] {
-  const ims = people
-    .filter((p) => p.role === "im" && p.active !== "false")
+  const handlers = people
+    .filter((p) => (p.role === "im" || p.role === "rig") && p.active !== "false")
     .sort((a, b) => a.name.localeCompare(b.name))
-    .map((p) => ({ value: p.person_id, label: `${p.name} (IM, ${hubName(p.hub)})` }));
+    .map((p) => ({ value: p.person_id, label: `${p.name} (${p.role === "im" ? "IM" : "Rig"}, ${hubName(p.hub)})` }));
 
   const linked = new Set(people.map((p) => p.person_id));
   const admins = users
@@ -22,7 +22,7 @@ export function actorOptions(people: Person[], users: AppUser[], hubName: (hubId
     .sort((a, b) => a.email.localeCompare(b.email))
     .map((u) => ({ value: u.email.toLowerCase(), label: `${u.email} (Admin)` }));
 
-  return [...ims, ...admins];
+  return [...handlers, ...admins];
 }
 
 /** A person's name for the sheet, so the log reads without lookups. An admin's email stays as it is. */
