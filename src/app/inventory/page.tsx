@@ -12,6 +12,7 @@ const PAGE_SIZE = 100;
 export default async function InventoryPage({ searchParams }: PageProps<"/inventory">) {
   const user = await requireRole();
   const isAdmin = user.role === "admin";
+  const canAdd = user.role === "admin" || user.role === "im";
   const sp = await searchParams;
   const q = one(sp.q).trim().toLowerCase();
   const status = one(sp.status); // one status, or several separated by commas (from dashboard tiles)
@@ -91,7 +92,10 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
       <p className={styles.back}>
         <Link href="/">← Home</Link>
       </p>
-      <h1>Inventory</h1>
+      <div className={styles.pageHead}>
+        <h1>Inventory</h1>
+        {canAdd && <Link href="/inventory/add">+ Add a card</Link>}
+      </div>
       {one(sp.done) && (
         <p className={styles.ok}>
           Updated {one(sp.done)} card(s)

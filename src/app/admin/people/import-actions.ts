@@ -19,7 +19,7 @@ export type ImportState =
 // One action for both buttons. "preview" only checks; "commit" re-checks the same text and saves,
 // and refuses to save anything while any row has an error.
 export async function runImport(_prev: ImportState, formData: FormData): Promise<ImportState> {
-  await requireRole("admin");
+  await requireRole("admin", "im");
   const text = String(formData.get("text") ?? "");
   const store = getStore();
   const [hubs, people] = await Promise.all([store.list("hubs"), store.list("people")]);

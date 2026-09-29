@@ -64,13 +64,6 @@ export default async function SendPage({ searchParams }: PageProps<"/handover/se
         <Link href="/">← Home</Link>
       </p>
       <h1>Send cards</h1>
-      {one(sp.done) && (
-        <p className={styles.ok}>
-          Sent {one(sp.done)} card(s) to {toPerson} at {toHubName}. Status: {status}.{" "}
-          {one(sp.batch) && <Link href={`/handover/receipt/${one(sp.batch)}`}>View / print receipt →</Link>}
-        </p>
-      )}
-      {one(sp.error) && <p className={styles.error}>{one(sp.error)}</p>}
 
       <form action={sendCards} className={styles.form}>
         <div className={styles.field}>
@@ -126,6 +119,14 @@ export default async function SendPage({ searchParams }: PageProps<"/handover/se
           <button type="submit">Send cards</button>
           <Link href="/handover/receive">Receive cards instead →</Link>
         </div>
+
+        {one(sp.done) && (
+          <p className={`${styles.ok} ${styles.result}`}>
+            Sent {one(sp.done)} card(s) to {toPerson} at {toHubName}. Status: {status}.{" "}
+            {one(sp.batch) && <Link href={`/handover/receipt/${one(sp.batch)}`}>View / print receipt →</Link>}
+          </p>
+        )}
+        {one(sp.error) && <p className={`${styles.error} ${styles.result}`}>{one(sp.error)}</p>}
       </form>
     </main>
   );

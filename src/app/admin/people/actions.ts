@@ -28,7 +28,7 @@ async function hubExists(hub: string) {
 }
 
 export async function addPerson(formData: FormData) {
-  await requireRole("admin");
+  await requireRole("admin", "im");
   const parsed = parse(formData);
   if (!parsed.success || !(await hubExists(parsed.data.hub))) redirect("/admin/people?error=invalid");
 
@@ -47,7 +47,7 @@ export async function addPerson(formData: FormData) {
 
 // person_id never changes, so past events keep pointing at the right person after edits.
 export async function savePerson(formData: FormData) {
-  await requireRole("admin");
+  await requireRole("admin", "im");
   const person_id = String(formData.get("person_id") ?? "");
   const parsed = parse(formData);
   const store = getStore();

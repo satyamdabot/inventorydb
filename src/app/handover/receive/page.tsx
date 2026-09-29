@@ -50,10 +50,6 @@ export default async function ReceivePage({ searchParams }: PageProps<"/handover
         Take cards into stock at a hub: cards sent to it, or cards coming back from an IFO, FO or the rig
         team. Scan the QR codes into the box.
       </p>
-      {one(sp.done) && <p className={styles.ok}>Received {one(sp.done)} card(s) into stock.</p>}
-      {one(sp.mismatch) && <p className={styles.error}>{one(sp.mismatch)} It was recorded on each card&apos;s history.</p>}
-      {one(sp.error) && <p className={styles.error}>{one(sp.error)}</p>}
-
       <form method="get" className={styles.row}>
         <HubSelect hubs={activeHubs.map((h) => ({ id: h.hub_id, name: h.name }))} value={hub} />
         <noscript>
@@ -102,6 +98,11 @@ export default async function ReceivePage({ searchParams }: PageProps<"/handover
           <input name="note" placeholder="Note (optional)" />
           <button type="submit">Receive cards</button>
         </div>
+
+        {one(sp.done) && <p className={styles.ok}>Received {one(sp.done)} card(s) into stock.</p>}
+        {one(sp.mismatch) && <p className={styles.error}>{one(sp.mismatch)} It was recorded on each card&apos;s history.</p>}
+        {one(sp.error) && <p className={styles.error}>{one(sp.error)}</p>}
+
         <Link href="/handover/send">Send cards instead →</Link>
       </form>
     </main>

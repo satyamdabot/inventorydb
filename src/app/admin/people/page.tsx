@@ -8,7 +8,7 @@ import ImportForm from "./ImportForm";
 const ROLE_LABELS = { im: "IM", ifo: "IFO", fo: "FO", rig: "Rig team" } as const;
 
 export default async function PeoplePage({ searchParams }: PageProps<"/admin/people">) {
-  await requireRole("admin");
+  await requireRole("admin", "im");
   const { error } = await searchParams;
   const store = getStore();
   const [people, allHubs] = await Promise.all([store.list("people"), store.list("hubs")]);
