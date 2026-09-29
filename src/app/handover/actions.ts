@@ -75,6 +75,13 @@ async function run(
 }
 
 export async function sendCards(formData: FormData) {
+  // "Internal" submits a typed name instead of a real person_id. There's no status rule for it yet
+  // (see planSend's SEND_STATUS), so it's refused here, before anything is scanned or saved, rather
+  // than guessing what it should do to the card.
+  if (String(formData.get("internalName") ?? "").trim()) {
+    redirect(go("/handover/send", { error: "Internal handovers aren't set up yet. Nothing was saved." }));
+  }
+
   // The person and the location are both required; planSend refuses the send if either is missing.
   const input = {
     fromHub: String(formData.get("fromHub") ?? ""),
