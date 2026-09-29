@@ -25,7 +25,7 @@ interface Attention {
 const GLYPH = { critical: "✕", warning: "▲", info: "●" } as const;
 const TONE = { critical: styles.iconCritical, warning: styles.iconWarning, info: styles.iconMuted };
 
-const STATUS_ORDER: Status[] = ["in_stock", "with_fo", "traveling", "with_rig", "pending", "lost", "damaged", "retired"];
+const STATUS_ORDER: Status[] = ["in_stock", "with_fo", "traveling", "with_rig", "with_internal", "pending", "lost", "damaged", "retired"];
 const HUB_BARS = 8;
 const LATE_LINES = 8; // late lines shown before "and N more"
 
@@ -53,6 +53,7 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
     { label: "In stock", value: s.in_stock, hint: share(s.in_stock), href: inventory({ status: "in_stock" }), icon: "check", color: "var(--series-3)" },
     { label: "With field officers", value: s.with_fo, hint: share(s.with_fo), href: inventory({ status: "with_fo" }), icon: "user", color: "var(--series-2)" },
     { label: "With rig team", value: s.with_rig, hint: share(s.with_rig), href: inventory({ status: "with_rig" }), icon: "database", color: "var(--series-7)" },
+    { label: "Internal", value: s.with_internal, hint: share(s.with_internal), href: inventory({ status: "with_internal" }), icon: "user", color: "var(--series-1)" },
     {
       label: "In transit",
       value: s.traveling + s.pending,

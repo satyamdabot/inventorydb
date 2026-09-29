@@ -60,6 +60,14 @@ assert.equal(t.utilization, 100); // 4 of 4 usable are out
 const allLost = items.map((i) => ({ ...i, status: "lost" as const }));
 assert.equal(computeDashboard(allLost, events, people, hubs, { hub: "", days: 7, now }).utilization, null);
 
+// "With internal" is a real status: counted in byStatus, in "out with someone", and in utilization, and
+// the holder shows under the typed name directly, since it has no row in People to look up.
+const internalCard = item("Z", { status: "with_internal", current_hub: "kadapa", current_holder: "Suresh Kumar", last_event_id: "E9" });
+const withInternal = computeDashboard([...items, internalCard], [...events, event("E9", "Z", { status_after: "with_internal", occurred_at: "2026-09-25T11:00:00Z" })], people, hubs, { hub: "", days: 7, now });
+assert.equal(withInternal.byStatus.with_internal, 1);
+assert.equal(withInternal.outCount, 4); // the 3 already out, plus the internal card
+assert.ok(withInternal.holders.some((h) => h.person_id === "Suresh Kumar" && h.name === "Suresh Kumar" && h.role === ""));
+
 // Needs attention: an FO or IFO holding cards, or cards sent to a hub, for MORE than LATE_AFTER_HOURS.
 const H = 3_600_000;
 const L = LATE_AFTER_HOURS;

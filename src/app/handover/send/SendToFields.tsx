@@ -15,7 +15,7 @@ const INTERNAL = "internal";
  * "Send to": the person AND the location, both required. The person is picked in two steps (category,
  * then a person from it) so the list stays short. Choosing "Internal" swaps the person dropdown for a
  * free-text name field, submitted separately as `internalName` — there's no matching row in People for
- * a typed name, so the server rejects it for now rather than guessing what status it should become.
+ * a typed name, so the card is recorded as "With internal" and shows under that name directly.
  * The location is never filled in for you: it starts empty and has to be chosen every time, because an
  * FO or IFO may be working away from their own hub.
  */
@@ -91,7 +91,7 @@ export default function SendToFields({
           </div>
           <p className={styles.hint}>
             {isInternal ? (
-              <>Internal handovers aren&apos;t saved yet — this will show an error until that&apos;s finished.</>
+              <>Recorded as &quot;With internal&quot;, under the name you type. Receive it back the same way as any other card.</>
             ) : (
               <>IM: waits to be received. IFO: traveling. FO: with the field officer. Rig: with the rig team.</>
             )}

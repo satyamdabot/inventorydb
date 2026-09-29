@@ -10,6 +10,7 @@ export function breakdown(s: HubStats): string {
     s.byStatus.pending > 0 && `${n(s.byStatus.pending)} incoming`,
     s.byStatus.with_fo > 0 && `${n(s.byStatus.with_fo)} with FO`,
     s.byStatus.with_rig > 0 && `${n(s.byStatus.with_rig)} with rig`,
+    s.byStatus.with_internal > 0 && `${n(s.byStatus.with_internal)} internal`,
     s.byStatus.traveling > 0 && `${n(s.byStatus.traveling)} traveling`,
     s.byStatus.lost + s.byStatus.damaged > 0 && `${n(s.byStatus.lost + s.byStatus.damaged)} lost or damaged`,
   ]

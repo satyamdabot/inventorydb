@@ -18,6 +18,7 @@ const TILES: { status: Status; icon?: { glyph: string; tone: "critical" | "warni
   { status: "with_fo" },
   { status: "traveling" },
   { status: "with_rig" },
+  { status: "with_internal" },
   { status: "pending" },
   { status: "lost", icon: { glyph: "✕", tone: "critical" } },
   { status: "damaged", icon: { glyph: "▲", tone: "warning" } },

@@ -19,7 +19,8 @@ export interface HandoverPlan {
 
 export interface SendInput {
   fromHub: string; // hub_id the cards are being sent from; every card must be in stock there
-  recipient: string; // person_id of who the cards are handed to. Always required
+  recipient?: string; // person_id of who the cards are handed to. Required unless internalName is set
+  internalName?: string; // a typed name for the "Internal" category, used instead of recipient
   toHub: string; // hub_id of the location the cards are going to. Always required
   note: string;
 }
@@ -32,7 +33,7 @@ const SEND_STATUS: Partial<Record<Role, Status>> = {
   rig: "with_rig",
 };
 // Cards an IM can take back into stock.
-const RECEIVABLE = new Set<Status>(["pending", "traveling", "with_fo", "with_rig"]);
+const RECEIVABLE = new Set<Status>(["pending", "traveling", "with_fo", "with_rig", "with_internal"]);
 
 const hubName = (ctx: HandoverContext, id: string) => ctx.hubs.find((h) => h.hub_id === id)?.name ?? id;
 
@@ -51,17 +52,28 @@ function eventBase(ctx: HandoverContext, note: string) {
 
 /**
  * Send in-stock cards to a person AT a location. Both are always required. The person decides the status
- * (IM = pending, IFO = traveling, FO = with FO, rig = with rig). The location is where the cards are
- * recorded, whichever hub the person normally belongs to.
+ * (IM = pending, IFO = traveling, FO = with FO, rig = with rig, a typed "Internal" name = with internal).
+ * The location is where the cards are recorded, whichever hub the person normally belongs to.
  */
 export function planSend(targets: Item[], input: SendInput, ctx: HandoverContext): HandoverPlan {
   const plan: HandoverPlan = { events: [], items: [], errors: [] };
   const activeHub = (id: string) => ctx.hubs.some((h) => h.hub_id === id && h.active !== "false");
 
-  const recipient = ctx.people.find((p) => p.person_id === input.recipient && p.active !== "false");
-  const status = recipient && SEND_STATUS[recipient.role];
-  const holder = recipient?.person_id ?? "";
-  if (!recipient || !status) plan.errors.push("Choose the person the cards are going to.");
+  // A typed "Internal" name has no row in People, so it's used as-is for the holder and the display
+  // name falls back to it automatically (see displayName). Otherwise the recipient must be a real,
+  // active person whose role has a status.
+  const internalName = (input.internalName ?? "").trim();
+  let status: Status | undefined;
+  let holder = "";
+  if (internalName) {
+    status = "with_internal";
+    holder = internalName;
+  } else {
+    const recipient = ctx.people.find((p) => p.person_id === input.recipient && p.active !== "false");
+    status = recipient && SEND_STATUS[recipient.role];
+    holder = recipient?.person_id ?? "";
+    if (!recipient || !status) plan.errors.push("Choose the person the cards are going to.");
+  }
   if (!activeHub(input.toHub)) plan.errors.push("Choose the location the cards are going to.");
 
   if (!activeHub(input.fromHub)) {

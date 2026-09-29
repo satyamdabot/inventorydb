@@ -135,6 +135,29 @@ const gotIt = planReceive(toIm.items, { hub: "kadapa", note: "" }, ctx);
 assert.deepEqual(gotIt.errors, []);
 assert.equal(gotIt.items[0].status, "in_stock");
 
+// "Internal": a typed name instead of a picked person. No row in People is needed or created.
+const toInternal = planSend([item("A")], { internalName: "Suresh Kumar", toHub: "kadapa", fromHub: "bangalore", note: "" }, ctx);
+assert.deepEqual(toInternal.errors, []);
+assert.equal(toInternal.items[0].status, "with_internal");
+assert.equal(toInternal.items[0].current_holder, "Suresh Kumar"); // the typed name itself, not a person_id
+assert.equal(toInternal.items[0].current_hub, "kadapa");
+assert.equal(toInternal.events[0].to_person, "Suresh Kumar"); // displayName falls back to the name when no person matches
+assert.equal(toInternal.events[0].to_id, "Suresh Kumar");
+// Surrounding whitespace in the typed name is trimmed, same as everywhere else free text is accepted.
+assert.equal(planSend([item("A")], { internalName: "  Suresh Kumar  ", toHub: "kadapa", fromHub: "bangalore", note: "" }, ctx).items[0].current_holder, "Suresh Kumar");
+// A blank or whitespace-only name is not a valid Internal send: falls through to needing a real recipient.
+assert.match(planSend([item("A")], { internalName: "", toHub: "kadapa", fromHub: "bangalore", note: "" }, ctx).errors[0], /Choose the person/);
+assert.match(planSend([item("A")], { internalName: "   ", toHub: "kadapa", fromHub: "bangalore", note: "" }, ctx).errors[0], /Choose the person/);
+// internalName wins over recipient if a form somehow sends both.
+const both = planSend([item("A")], { internalName: "Suresh Kumar", recipient: "fo-ravi", toHub: "kadapa", fromHub: "bangalore", note: "" }, ctx);
+assert.equal(both.items[0].status, "with_internal");
+assert.equal(both.items[0].current_holder, "Suresh Kumar");
+// An Internal card can be received back into stock, the same as an FO, IFO or rig team card.
+const internalBack = planReceive(toInternal.items, { hub: "kadapa", note: "" }, ctx);
+assert.deepEqual(internalBack.errors, []);
+assert.equal(internalBack.items[0].status, "in_stock");
+assert.equal(internalBack.events[0].from_person, "Suresh Kumar");
+
 // Every checkout and receive is stamped with the exact date and time it was saved, on the event and the card.
 const stamped = planSend([item("A"), item("B")], { recipient: "fo-ravi", toHub: "bangalore", fromHub: "bangalore", note: "" }, ctx);
 assert.ok(stamped.events.every((e) => e.occurred_at === ctx.now && e.recorded_at === ctx.now));

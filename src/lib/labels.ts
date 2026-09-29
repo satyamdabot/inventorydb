@@ -6,6 +6,7 @@ export const STATUS_LABELS: Record<Status, string> = {
   traveling: "Traveling (IFO)",
   with_fo: "With FO",
   with_rig: "With rig team",
+  with_internal: "With internal",
   lost: "Lost",
   damaged: "Damaged",
   retired: "Retired",

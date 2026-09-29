@@ -42,7 +42,7 @@ export function SummaryKpis({ d, hubParam }: { d: Dashboard; hubParam?: string }
       label: "Utilization",
       value: pct === null ? "—" : `${pct}%`,
       note: `${n(d.outCount)} out of ${n(d.usable)} usable cards`,
-      href: list({ status: "pending,traveling,with_fo,with_rig" }),
+      href: list({ status: "pending,traveling,with_fo,with_rig,with_internal" }),
       meter: pct ?? 0,
     },
     {

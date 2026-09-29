@@ -49,6 +49,7 @@ export const STATUSES = [
   "traveling",
   "with_fo",
   "with_rig",
+  "with_internal",
   "lost",
   "damaged",
   "retired",
@@ -56,7 +57,7 @@ export const STATUSES = [
 export type Status = (typeof STATUSES)[number];
 
 // Statuses where a card is out of an IM's hands and someone is expected to bring it back.
-export const OUT_STATUSES: readonly Status[] = ["pending", "traveling", "with_fo", "with_rig"];
+export const OUT_STATUSES: readonly Status[] = ["pending", "traveling", "with_fo", "with_rig", "with_internal"];
 
 export const ACTIONS = [
   "check_out",

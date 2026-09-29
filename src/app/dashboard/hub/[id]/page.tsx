@@ -63,6 +63,7 @@ export default async function HubDetailPage({ params, searchParams }: PageProps<
     { label: "In stock", value: s.in_stock, href: inventory({ status: "in_stock" }) },
     { label: "With field officers", value: s.with_fo, href: inventory({ status: "with_fo" }) },
     { label: "With rig team", value: s.with_rig, href: inventory({ status: "with_rig" }) },
+    { label: "Internal", value: s.with_internal, href: inventory({ status: "with_internal" }) },
     { label: "In transit", value: s.traveling + s.pending, href: inventory({ status: "traveling,pending" }) },
     { label: "Lost or damaged", value: s.lost + s.damaged, href: inventory({ status: "lost,damaged" }) },
   ];
