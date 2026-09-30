@@ -4,7 +4,7 @@ import { requireRole } from "@/lib/authz";
 import { LATE_AFTER_HOURS, computeDashboard } from "@/lib/dashboard";
 import { buildHubTree } from "@/lib/hub-tree";
 import { ROLE_LABELS, STATUS_LABELS, one } from "@/lib/labels";
-import { OUT_STATUSES, type Status } from "@/lib/schema";
+import type { Status } from "@/lib/schema";
 import { getStore } from "@/lib/store";
 import { ActivityChart, BarList, n } from "./charts";
 import styles from "./dashboard.module.css";
@@ -28,7 +28,7 @@ const TONE = { critical: styles.iconCritical, warning: styles.iconWarning, info:
 const STATUS_ORDER: Status[] = ["in_stock", "with_fo", "traveling", "with_rig", "with_internal", "pending", "lost", "damaged", "retired"];
 const HUB_BARS = 8;
 const LATE_LINES = 8; // late lines shown before "and N more"
-const HOLDER_ROWS = 8; // holder rows shown before "and N more", by most cards held
+const HOLDER_ROWS = 7; // holder rows shown, by most cards held
 
 export default async function DashboardPage({ searchParams }: PageProps<"/dashboard">) {
   const user = await requireRole();
@@ -320,13 +320,6 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
                     ))}
                   </tbody>
                 </table>
-                {d.holders.length > HOLDER_ROWS && (
-                  <p className={styles.muted}>
-                    <Link href={inventory({ status: OUT_STATUSES.join(",") })}>
-                      and {d.holders.length - HOLDER_ROWS} more →
-                    </Link>
-                  </p>
-                )}
               </div>
             )}
           </section>
