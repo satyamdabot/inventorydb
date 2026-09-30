@@ -3,7 +3,8 @@ import { requireRole } from "@/lib/authz";
 import { ROLE_LABELS } from "@/lib/labels";
 import { getStore } from "@/lib/store";
 import styles from "../admin.module.css";
-import { addUser, saveUser } from "./actions";
+import { addUser } from "./actions";
+import UserRow from "./UserRow";
 
 const ERRORS: Record<string, string> = {
   invalid: "Please enter a valid email and role.",
@@ -48,7 +49,7 @@ export default async function UsersPage({ searchParams }: PageProps<"/admin/user
       </p>
       <h1>Users</h1>
       <p className={styles.muted}>
-        Only these Google accounts can sign in. Admins and IMs can send and receive cards. Rig can view the
+        Only these Google accounts can sign in. Admins and IMs can send and receive items. Rig can view the
         dashboard and inventory. IM and Rig logins must be linked to their entry in the People tab. Changes
         apply the next time that person signs in. Deactivate instead of deleting.
       </p>
@@ -62,23 +63,9 @@ export default async function UsersPage({ searchParams }: PageProps<"/admin/user
       </form>
 
       <div className={styles.list}>
-        {users.map((u) => {
-          const isMe = u.email.toLowerCase() === me.email?.toLowerCase();
-          return (
-            <form key={u.email} action={saveUser} className={styles.row}>
-              <input type="hidden" name="email" value={u.email} />
-              <span style={{ flex: "1 1 220px" }}>{u.email}{isMe && " (you)"}</span>
-              {roleSelect(u.role)}
-              {personSelect(u.person_id)}
-              <label>
-                <input type="checkbox" name="active" defaultChecked={u.active !== "false"} disabled={isMe} /> Active
-              </label>
-              <button type="submit" disabled={isMe}>
-                Save
-              </button>
-            </form>
-          );
-        })}
+        {users.map((u) => (
+          <UserRow key={u.email} user={u} linkable={linkable} isMe={u.email.toLowerCase() === me.email?.toLowerCase()} />
+        ))}
       </div>
     </main>
   );

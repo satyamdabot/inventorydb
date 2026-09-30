@@ -48,7 +48,7 @@ function Box({ node }: { node: HubNode }) {
         {node.hub.active === "false" && <span className={styles.treeTag}>inactive</span>}
       </span>
       <span className={styles.orgCount}>
-        {n(t.held)} <small>{t.held === 1 ? "card" : "cards"}</small>
+        {n(t.held)} <small>{t.held === 1 ? "item" : "items"}</small>
       </span>
       {t.held > 0 && (
         <span

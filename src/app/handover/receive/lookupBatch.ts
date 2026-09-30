@@ -33,7 +33,7 @@ export async function lookupBatch(raw: string): Promise<BatchLookupResult> {
   const count = summary.items.length;
   return {
     ok: true,
-    message: `Batch ${summary.batchId}: ${count} card${count === 1 ? "" : "s"}, ${who}, at ${summary.hubName}, ${formatIst(summary.occurredAt)} IST.`,
+    message: `Batch ${summary.batchId}: ${count} item${count === 1 ? "" : "s"}, ${who}, at ${summary.hubName}, ${formatIst(summary.occurredAt)} IST.`,
     ids: summary.items.map((i) => i.itemId),
   };
 }

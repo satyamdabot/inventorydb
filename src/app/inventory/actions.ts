@@ -26,7 +26,7 @@ export async function applyCorrection(formData: FormData) {
   // Ticked rows plus serials typed, pasted or scanned (one per line).
   const scanned = String(formData.get("scanned") ?? "").split(/[\s,]+/);
   const ids = [...new Set([...formData.getAll("ids").map(String), ...scanned].map((s) => s.trim()).filter(Boolean))];
-  if (!ids.length) redirect(backTo(back, { error: "Tick or scan at least one card." }));
+  if (!ids.length) redirect(backTo(back, { error: "Tick or scan at least one item." }));
 
   const store = getStore();
   const [found, hubs, people] = await Promise.all([

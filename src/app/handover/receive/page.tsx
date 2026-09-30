@@ -45,9 +45,9 @@ export default async function ReceivePage({ searchParams }: PageProps<"/handover
       <p className={styles.back}>
         <Link href="/">← Home</Link>
       </p>
-      <h1>Receive cards</h1>
+      <h1>Receive items</h1>
       <p className={styles.muted}>
-        Take cards into stock at a hub: cards sent to it, or cards coming back from an IFO, FO or the rig
+        Take items into stock at a hub: items sent to it, or items coming back from an IFO, FO or the rig
         team. Scan the QR codes into the box.
       </p>
       <form method="get" className={styles.row}>
@@ -56,7 +56,7 @@ export default async function ReceivePage({ searchParams }: PageProps<"/handover
           <button type="submit">Change hub</button>
         </noscript>
       </form>
-      <p className={styles.muted}>Choose the hub first, then scan. Cards sent to a hub can only be received there.</p>
+      <p className={styles.muted}>Choose the hub first, then scan. Items sent to a hub can only be received there.</p>
       {waitingElsewhere.length > 0 && (
         <p className={styles.muted}>
           Also waiting at other hubs:{" "}
@@ -96,14 +96,14 @@ export default async function ReceivePage({ searchParams }: PageProps<"/handover
           )}
           <input name="expected" type="number" min="0" placeholder="Expected count (optional)" />
           <input name="note" placeholder="Note (optional)" />
-          <button type="submit">Receive cards</button>
+          <button type="submit">Receive items</button>
         </div>
 
-        {one(sp.done) && <p className={styles.ok}>Received {one(sp.done)} card(s) into stock.</p>}
-        {one(sp.mismatch) && <p className={styles.error}>{one(sp.mismatch)} It was recorded on each card&apos;s history.</p>}
+        {one(sp.done) && <p className={styles.ok}>Received {one(sp.done)} item(s) into stock.</p>}
+        {one(sp.mismatch) && <p className={styles.error}>{one(sp.mismatch)} It was recorded on each item&apos;s history.</p>}
         {one(sp.error) && <p className={styles.error}>{one(sp.error)}</p>}
 
-        <Link href="/handover/send">Send cards instead →</Link>
+        <Link href="/handover/send">Send items instead →</Link>
       </form>
     </main>
   );

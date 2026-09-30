@@ -2,8 +2,9 @@ import Link from "next/link";
 import { requireRole } from "@/lib/authz";
 import { getStore } from "@/lib/store";
 import styles from "../admin.module.css";
-import { addPerson, savePerson } from "./actions";
+import { addPerson } from "./actions";
 import ImportForm from "./ImportForm";
+import PersonRow from "./PersonRow";
 
 const ROLE_LABELS = { im: "IM", ifo: "IFO", fo: "FO", rig: "Rig team" } as const;
 
@@ -65,17 +66,7 @@ export default async function PeoplePage({ searchParams }: PageProps<"/admin/peo
 
       <div className={styles.list}>
         {people.map((p) => (
-          <form key={p.person_id} action={savePerson} className={styles.row}>
-            <input type="hidden" name="person_id" value={p.person_id} />
-            <input name="name" defaultValue={p.name} required />
-            {roleSelect(p.role)}
-            {hubSelect(p.hub)}
-            <input name="email" type="email" defaultValue={p.linked_user} />
-            <label>
-              <input type="checkbox" name="active" defaultChecked={p.active !== "false"} /> Active
-            </label>
-            <button type="submit">Save</button>
-          </form>
+          <PersonRow key={p.person_id} person={p} hubs={hubs} />
         ))}
       </div>
     </main>

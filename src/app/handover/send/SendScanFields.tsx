@@ -35,13 +35,13 @@ export default function SendScanFields({
               </option>
             ))}
           </select>
-          <p className={styles.hint}>The hub the cards are leaving. Every card must be in stock there.</p>
+          <p className={styles.hint}>The hub the items are leaving. Every item must be in stock there.</p>
         </div>
       </div>
 
       <div className={styles.field}>
         <label className={styles.label} htmlFor="scanned">
-          Cards
+          Items
         </label>
         <div className={styles.control}>
           <ScanBox id="scanned" mode="send" hub={hub} hubNames={hubNames} items={items} />

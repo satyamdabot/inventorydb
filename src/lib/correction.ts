@@ -64,7 +64,7 @@ export function planCorrection(
   const needRole = HOLDER_ROLE[status];
   const holder = ctx.people.find((p) => p.person_id === input.holder && p.active !== "false");
   if (needRole) {
-    if (!holder) plan.errors.push(`Choose who holds the card (a ${needRole.toUpperCase()}).`);
+    if (!holder) plan.errors.push(`Choose who holds the item (a ${needRole.toUpperCase()}).`);
     else if (holder.role !== needRole) {
       plan.errors.push(`${holder.name} is ${holder.role.toUpperCase()}; "${status}" needs a ${needRole.toUpperCase()}.`);
     }

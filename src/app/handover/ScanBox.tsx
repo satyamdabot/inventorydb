@@ -105,7 +105,7 @@ export default function ScanBox({
             setText((t) => (t.endsWith("\n") ? t : `${t}\n`));
           }
         }}
-        placeholder="Scan cards here. Each code should appear on its own line."
+        placeholder="Scan items here. Each code should appear on its own line."
         className={styles.textarea}
         spellCheck={false}
         autoComplete="off"
@@ -126,7 +126,7 @@ export default function ScanBox({
         </p>
       )}
       {results.length > 0 && (
-        <ul className={styles.list} aria-label="Scanned cards">
+        <ul className={styles.list} aria-label="Scanned items">
           {[...results].reverse().map((r, i) => (
             <li key={`${r.code}-${i}`} className={r.state === "ok" ? styles.ok : r.state === "duplicate" ? styles.dup : styles.bad}>
               <span aria-hidden>{MARK[r.state]}</span>

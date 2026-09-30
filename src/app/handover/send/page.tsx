@@ -66,7 +66,7 @@ export default async function SendPage({ searchParams }: PageProps<"/handover/se
       <p className={styles.back}>
         <Link href="/">← Home</Link>
       </p>
-      <h1>Send cards</h1>
+      <h1>Send items</h1>
 
       <form action={sendCards} className={styles.form}>
         <div className={styles.field}>
@@ -119,13 +119,13 @@ export default async function SendPage({ searchParams }: PageProps<"/handover/se
         </div>
 
         <div className={styles.actions}>
-          <button type="submit">Send cards</button>
-          <Link href="/handover/receive">Receive cards instead →</Link>
+          <button type="submit">Send items</button>
+          <Link href="/handover/receive">Receive items instead →</Link>
         </div>
 
         {one(sp.done) && (
           <p className={`${styles.ok} ${styles.result}`}>
-            Sent {one(sp.done)} card(s) to {toPerson} at {toHubName}. Status: {status}.{" "}
+            Sent {one(sp.done)} item(s) to {toPerson} at {toHubName}. Status: {status}.{" "}
             {one(sp.batch) && <Link href={`/handover/receipt/${one(sp.batch)}`}>View / print receipt →</Link>}
           </p>
         )}

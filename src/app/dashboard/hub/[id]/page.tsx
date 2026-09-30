@@ -59,7 +59,7 @@ export default async function HubDetailPage({ params, searchParams }: PageProps<
 
   const s = d.byStatus;
   const tiles = [
-    { label: "Cards", value: d.total, href: inventory({}) },
+    { label: "Items", value: d.total, href: inventory({}) },
     { label: "In stock", value: s.in_stock, href: inventory({ status: "in_stock" }) },
     { label: "With field officers", value: s.with_fo, href: inventory({ status: "with_fo" }) },
     { label: "With rig team", value: s.with_rig, href: inventory({ status: "with_rig" }) },
@@ -111,7 +111,7 @@ export default async function HubDetailPage({ params, searchParams }: PageProps<
           {node.hub.city && node.hub.city !== node.hub.name ? `${node.hub.city} · ` : ""}
           {node.hub.is_central === "true" ? "Main hub · " : ""}
           {node.hub.active === "false" ? "Inactive · " : ""}
-          Owns {n(node.owned)} cards · {hasSub ? `${node.children.length} hub${node.children.length === 1 ? "" : "s"} under it` : "no hubs under it"}
+          Owns {n(node.owned)} items · {hasSub ? `${node.children.length} hub${node.children.length === 1 ? "" : "s"} under it` : "no hubs under it"}
         </p>
 
         {hasSub && (
@@ -140,7 +140,7 @@ export default async function HubDetailPage({ params, searchParams }: PageProps<
                 <thead>
                   <tr>
                     <th>Hub</th>
-                    <th className={styles.num}>Cards</th>
+                    <th className={styles.num}>Items</th>
                     <th>Breakdown</th>
                   </tr>
                 </thead>
@@ -167,15 +167,15 @@ export default async function HubDetailPage({ params, searchParams }: PageProps<
         )}
 
         {here.length === 0 ? (
-          <section className={styles.card} aria-label="Cards here">
-            <h2>Cards here</h2>
-            <p className={styles.muted}>No cards at {withSub ? "this hub or the hubs under it" : "this hub"} right now.</p>
+          <section className={styles.card} aria-label="Items here">
+            <h2>Items here</h2>
+            <p className={styles.muted}>No items at {withSub ? "this hub or the hubs under it" : "this hub"} right now.</p>
           </section>
         ) : (
-          <Collapsible title="Cards here" count={n(here.length)} meta={breakdown(withSub ? node.total : node.own)}>
+          <Collapsible title="Items here" count={n(here.length)} meta={breakdown(withSub ? node.total : node.own)}>
             {here.length > CARDS_SHOWN && (
               <p className={styles.muted}>
-                Showing the first {CARDS_SHOWN}, cards that are out first.{" "}
+                Showing the first {CARDS_SHOWN}, items that are out first.{" "}
                 <Link href={inventory({})} className={styles.link}>
                   See all {n(here.length)} in the inventory list
                 </Link>
@@ -211,8 +211,8 @@ export default async function HubDetailPage({ params, searchParams }: PageProps<
         )}
 
         <div className={styles.grid2}>
-          <section className={styles.card} aria-label="Who has cards here">
-            <h2>Who has cards</h2>
+          <section className={styles.card} aria-label="Who has items here">
+            <h2>Who has items</h2>
             {d.holders.length === 0 ? (
               <p className={styles.muted}>Nothing is out from here right now.</p>
             ) : (
@@ -221,7 +221,7 @@ export default async function HubDetailPage({ params, searchParams }: PageProps<
                   <thead>
                     <tr>
                       <th>Person</th>
-                      <th className={styles.num}>Cards</th>
+                      <th className={styles.num}>Items</th>
                       <th className={styles.num}>Longest</th>
                     </tr>
                   </thead>
@@ -245,14 +245,14 @@ export default async function HubDetailPage({ params, searchParams }: PageProps<
           <section className={styles.card} aria-label="Waiting to be received here">
             <h2>Waiting to be received</h2>
             {d.pending.length === 0 ? (
-              <p className={styles.muted}>No cards are on their way here.</p>
+              <p className={styles.muted}>No items are on their way here.</p>
             ) : (
               <div className={styles.tableScroll}>
                 <table className={styles.table}>
                   <thead>
                     <tr>
                       <th>Receiving hub</th>
-                      <th className={styles.num}>Cards</th>
+                      <th className={styles.num}>Items</th>
                       <th className={styles.num}>Waiting</th>
                     </tr>
                   </thead>
@@ -285,7 +285,7 @@ export default async function HubDetailPage({ params, searchParams }: PageProps<
                   <tr>
                     <th>When</th>
                     <th>What</th>
-                    <th>Card</th>
+                    <th>Item</th>
                     <th>From → To</th>
                     <th>Now</th>
                   </tr>

@@ -75,7 +75,7 @@ export default function ReceiveScanArea({
           </div>
           {message && <p className={message.ok ? styles.ok : styles.error}>{message.text}</p>}
           <p className={formStyles.hint}>
-            Loads every card from that batch into the box below at once, skipping any already there.
+            Loads every item from that batch into the box below at once, skipping any already there.
           </p>
         </div>
       </div>

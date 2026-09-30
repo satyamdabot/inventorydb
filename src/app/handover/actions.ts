@@ -20,7 +20,7 @@ async function run(
   summary: (plan: HandoverPlan) => Record<string, string>,
 ) {  const user = await requireRole("admin", "im", "rig");
   const ids = collectIds(String(formData.get("scanned") ?? ""), formData.getAll("ids").map(String));
-  if (!ids.length) redirect(go(path, { error: "Scan or tick at least one card." }));
+  if (!ids.length) redirect(go(path, { error: "Scan or tick at least one item." }));
 
   const store = getStore();
   const [found, hubs, people, users] = await Promise.all([

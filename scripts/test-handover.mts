@@ -107,9 +107,9 @@ assert.match(planReceive([item("A", { status: "pending" })], { hub: "mars", note
 
 // A send always needs BOTH a person and a location. Either one missing refuses it, and nothing is saved.
 const noPerson = planSend([item("A")], { recipient: "", toHub: "kadapa", fromHub: "bangalore", note: "" }, ctx);
-assert.deepEqual(noPerson.errors, ["Choose the person the cards are going to."]);
+assert.deepEqual(noPerson.errors, ["Choose the person the items are going to."]);
 const noLocation = planSend([item("A")], { recipient: "fo-ravi", toHub: "", fromHub: "bangalore", note: "" }, ctx);
-assert.deepEqual(noLocation.errors, ["Choose the location the cards are going to."]);
+assert.deepEqual(noLocation.errors, ["Choose the location the items are going to."]);
 const neither = planSend([item("A")], { recipient: "", toHub: "", fromHub: "bangalore", note: "" }, ctx);
 assert.equal(neither.errors.length, 2); // both problems are reported together
 assert.equal(noPerson.events.length + noLocation.events.length + neither.events.length, 0);

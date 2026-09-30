@@ -41,7 +41,7 @@ export function SummaryKpis({ d, hubParam }: { d: Dashboard; hubParam?: string }
       icon: "activity",
       label: "Utilization",
       value: pct === null ? "—" : `${pct}%`,
-      note: `${n(d.outCount)} out of ${n(d.usable)} usable cards`,
+      note: `${n(d.outCount)} out of ${n(d.usable)} usable items`,
       href: list({ status: "pending,traveling,with_fo,with_rig,with_internal" }),
       meter: pct ?? 0,
     },
@@ -56,7 +56,7 @@ export function SummaryKpis({ d, hubParam }: { d: Dashboard; hubParam?: string }
     {
       key: "late",
       icon: "alert",
-      label: "Late cards",
+      label: "Late items",
       value: n(d.lateCards),
       note:
         d.lateCards > 0

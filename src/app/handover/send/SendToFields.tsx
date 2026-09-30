@@ -91,7 +91,7 @@ export default function SendToFields({
           </div>
           <p className={styles.hint}>
             {isInternal ? (
-              <>Recorded as &quot;With internal&quot;, under the name you type. Receive it back the same way as any other card.</>
+              <>Recorded as &quot;With internal&quot;, under the name you type. Receive it back the same way as any other item.</>
             ) : (
               <>IM: waits to be received. IFO: traveling. FO: with the field officer. Rig: with the rig team.</>
             )}
@@ -119,7 +119,7 @@ export default function SendToFields({
             ))}
           </select>
           <p className={styles.hint}>
-            Where the cards will be recorded. Choose it every time: it is not filled in from the person, because they
+            Where the items will be recorded. Choose it every time: it is not filled in from the person, because they
             may be working at another hub.
           </p>
         </div>

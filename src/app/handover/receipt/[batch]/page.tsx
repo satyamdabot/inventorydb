@@ -39,7 +39,7 @@ export default async function ReceiptPage({ params }: PageProps<"/handover/recei
   return (
     <main className={styles.page}>
       <p className={`${styles.back} ${styles.noPrint}`}>
-        <Link href="/handover/send">← Send cards</Link>
+        <Link href="/handover/send">← Send items</Link>
       </p>
 
       <div className={styles.receipt}>
@@ -69,7 +69,7 @@ export default async function ReceiptPage({ params }: PageProps<"/handover/recei
           )}
         </dl>
 
-        <h2>{summary.items.length} card{summary.items.length === 1 ? "" : "s"}</h2>
+        <h2>{summary.items.length} item{summary.items.length === 1 ? "" : "s"}</h2>
         <table className={styles.table}>
           <thead>
             <tr>
@@ -107,7 +107,7 @@ export default async function ReceiptPage({ params }: PageProps<"/handover/recei
         </table>
 
         <p className={styles.muted}>
-          Scan the QR code above when receiving this batch to load every card here in one go, instead of
+          Scan the QR code above when receiving this batch to load every item here in one go, instead of
           scanning each one again.
         </p>
       </div>

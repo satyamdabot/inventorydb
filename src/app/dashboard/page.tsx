@@ -49,7 +49,7 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
   const activeHubs = hubs.filter((h) => h.active !== "false").length;
 
   const s = d.byStatus;
-  const share = (v: number) => (d.total ? `${Math.round((v / d.total) * 100)}% of all cards` : "");
+  const share = (v: number) => (d.total ? `${Math.round((v / d.total) * 100)}% of all items` : "");
   const kpis: { label: string; value: number; hint: string; href: string; icon: IconName; color: string }[] = [
     { label: "In stock", value: s.in_stock, hint: share(s.in_stock), href: inventory({ status: "in_stock" }), icon: "check", color: "var(--series-3)" },
     { label: "With field officers", value: s.with_fo, hint: share(s.with_fo), href: inventory({ status: "with_fo" }), icon: "user", color: "var(--series-2)" },
@@ -81,7 +81,7 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
       label: STATUS_LABELS[st],
       value: s[st],
       href: inventory({ status: st }),
-      tip: `${STATUS_LABELS[st]}\n${n(s[st])} cards (${((s[st] / Math.max(1, d.total)) * 100).toFixed(1)}%)`,
+      tip: `${STATUS_LABELS[st]}\n${n(s[st])} items (${((s[st] / Math.max(1, d.total)) * 100).toFixed(1)}%)`,
     }));
 
   const byHub = d.hubs.filter((h) => h.held > 0);
@@ -90,12 +90,12 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
     label: h.name,
     value: h.held,
     href: `/dashboard/hub/${h.hub_id}`,
-    tip: `${h.name}\n${n(h.held)} cards\n${n(h.byStatus.in_stock)} in stock`,
+    tip: `${h.name}\n${n(h.held)} items\n${n(h.byStatus.in_stock)} in stock`,
   }));
   const rest = byHub.slice(HUB_BARS);
   if (rest.length) {
     const total = rest.reduce((sum, h) => sum + h.held, 0);
-    hubRows.push({ key: "other", label: `${rest.length} other hubs`, value: total, href: "/inventory", tip: `${rest.length} other hubs\n${n(total)} cards` });
+    hubRows.push({ key: "other", label: `${rest.length} other hubs`, value: total, href: "/inventory", tip: `${rest.length} other hubs\n${n(total)} items` });
   }
 
   // Plain sentences about what to look at, most useful first. Empty means all is well.
@@ -107,14 +107,14 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
     if (g.kind === "pending") {
       attention.push({
         key: `late-pending-${g.key}`,
-        text: `${plural(g.count, "card")} sent to ${g.label} not received after ${LATE_AFTER_HOURS} hours, oldest ${howLong(g.oldestHours)}`,
+        text: `${plural(g.count, "item")} sent to ${g.label} not received after ${LATE_AFTER_HOURS} hours, oldest ${howLong(g.oldestHours)}`,
         href: `/handover/receive?${new URLSearchParams({ hub: g.key })}`,
         tone: "warning",
       });
     } else {
       attention.push({
         key: `late-${g.kind}-${g.key}`,
-        text: `${g.label} (${g.kind === "fo" ? "FO" : "IFO"}) has ${plural(g.count, "card")} ${g.kind === "fo" ? "not returned" : "not arrived"} after ${LATE_AFTER_HOURS} hours, longest ${howLong(g.oldestHours)}`,
+        text: `${g.label} (${g.kind === "fo" ? "FO" : "IFO"}) has ${plural(g.count, "item")} ${g.kind === "fo" ? "not returned" : "not arrived"} after ${LATE_AFTER_HOURS} hours, longest ${howLong(g.oldestHours)}`,
         href: inventory({ holder: g.key, status: g.kind === "fo" ? "with_fo" : "traveling" }),
         tone: "warning",
       });
@@ -131,7 +131,7 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
   if (s.lost + s.damaged > 0) {
     attention.push({
       key: "problem",
-      text: `${plural(s.lost, "card")} lost, ${plural(s.damaged, "card")} damaged`,
+      text: `${plural(s.lost, "item")} lost, ${plural(s.damaged, "item")} damaged`,
       href: inventory({ status: "lost,damaged" }),
       tone: "critical",
     });
@@ -139,7 +139,7 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
   if (d.inconsistencies.length > 0) {
     attention.push({
       key: "mismatch",
-      text: `${plural(d.inconsistencies.length, "card")} don't match their history`,
+      text: `${plural(d.inconsistencies.length, "item")} don't match their history`,
       href: "/dashboard/analytics",
       tone: "critical",
     });
@@ -156,7 +156,7 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
             <div>
               <h1>Inventory Dashboard</h1>
               <p className={styles.subtitle}>
-                {n(d.total)} cards · {activeHubs} hubs · the latest known position of every card
+                {n(d.total)} items · {activeHubs} hubs · the latest known position of every item
               </p>
             </div>
           </div>
@@ -164,10 +164,10 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
             {canHandle && (
               <>
                 <Link href="/handover/send" className={`${styles.btn} ${styles.btnPrimary}`}>
-                  <Icon name="send" size={16} /> Send cards
+                  <Icon name="send" size={16} /> Send items
                 </Link>
                 <Link href="/handover/receive" className={styles.btn}>
-                  <Icon name="inbox" size={16} /> Receive cards
+                  <Icon name="inbox" size={16} /> Receive items
                 </Link>
               </>
             )}
@@ -199,7 +199,7 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
 
         <form action="/inventory" method="get" role="search" className={styles.search}>
           <Icon name="search" size={18} />
-          <input name="q" placeholder="Find a card by serial, prism no., brand or model" aria-label="Find a card" />
+          <input name="q" placeholder="Find an item by serial, prism no., brand or model" aria-label="Find an item" />
         </form>
 
         <SummaryKpis d={d} />
@@ -225,13 +225,13 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
             <span className={styles.muted}>Click a hub for everything about it</span>
           </div>
           <p className={styles.muted}>
-            The main hub is at the top with the hubs under it. Each box shows the cards the hub holds, including the
+            The main hub is at the top with the hubs under it. Each box shows the items the hub holds, including the
             hubs under it.
           </p>
           <HubOrgChart roots={tree} showEmpty={showEmpty} />
           {hiddenEmpty > 0 && !showEmpty && (
             <p className={styles.muted}>
-              {hiddenEmpty} hub{hiddenEmpty === 1 ? "" : "s"} with no cards {hiddenEmpty === 1 ? "is" : "are"} hidden.{" "}
+              {hiddenEmpty} hub{hiddenEmpty === 1 ? "" : "s"} with no items {hiddenEmpty === 1 ? "is" : "are"} hidden.{" "}
               <Link href="/dashboard?empty=1" className={styles.link}>
                 Show {hiddenEmpty === 1 ? "it" : "them"}
               </Link>
@@ -240,26 +240,26 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
           {showEmpty && (
             <p className={styles.muted}>
               <Link href="/dashboard" className={styles.link}>
-                Hide hubs with no cards
+                Hide hubs with no items
               </Link>
             </p>
           )}
         </section>
 
         <div className={styles.chartRow}>
-          <section className={styles.card} aria-label="Cards by status">
-            <h2>Cards by status</h2>
-            {statusRows.length ? <BarList rows={statusRows} /> : <p className={styles.muted}>No cards.</p>}
+          <section className={styles.card} aria-label="Items by status">
+            <h2>Items by status</h2>
+            {statusRows.length ? <BarList rows={statusRows} /> : <p className={styles.muted}>No items.</p>}
           </section>
-          <section className={styles.card} aria-label="Cards by hub">
-            <h2>Cards by hub</h2>
-            {hubRows.length ? <BarList rows={hubRows} /> : <p className={styles.muted}>No cards at any hub.</p>}
+          <section className={styles.card} aria-label="Items by hub">
+            <h2>Items by hub</h2>
+            {hubRows.length ? <BarList rows={hubRows} /> : <p className={styles.muted}>No items at any hub.</p>}
           </section>
         </div>
 
-        <section className={styles.card} aria-label="Cards moved per day">
+        <section className={styles.card} aria-label="Items moved per day">
           <div className={styles.sectionHead}>
-            <h2>Cards moved per day</h2>
+            <h2>Items moved per day</h2>
             <span className={styles.muted}>Last 14 days</span>
           </div>
           <ActivityChart days={d.activity} />
@@ -269,8 +269,8 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
           <section className={styles.card} id="attention" aria-label="Needs attention">
             <h2>Needs attention</h2>
             <p className={styles.muted}>
-              Cards with an FO or IFO, or sent to a hub, for more than {LATE_AFTER_HOURS} hours, plus lost, damaged and
-              mismatched cards.
+              Items with an FO or IFO, or sent to a hub, for more than {LATE_AFTER_HOURS} hours, plus lost, damaged and
+              mismatched items.
             </p>
             {attention.length === 0 ? (
               <p className={styles.ok}>
@@ -293,8 +293,8 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
             )}
           </section>
 
-          <section className={styles.card} aria-label="Who has cards">
-            <h2>Who has cards{d.holders.length > HOLDER_ROWS && ` — top ${HOLDER_ROWS} of ${d.holders.length}`}</h2>
+          <section className={styles.card} aria-label="Who has items">
+            <h2>Who has items{d.holders.length > HOLDER_ROWS && ` — top ${HOLDER_ROWS} of ${d.holders.length}`}</h2>
             {d.holders.length === 0 ? (
               <p className={styles.muted}>Nothing is out right now.</p>
             ) : (
@@ -303,7 +303,7 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
                   <thead>
                     <tr>
                       <th>Person</th>
-                      <th className={styles.num}>Cards</th>
+                      <th className={styles.num}>Items</th>
                       <th className={styles.num}>Longest</th>
                     </tr>
                   </thead>

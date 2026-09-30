@@ -20,9 +20,9 @@ const HANDLERS: Role[] = ["admin", "im", "rig"];
 // What each section is for, in one line. A tile only shows for the roles that can open it.
 const WORK: Tile[] = [
   { href: "/dashboard", title: "Dashboard", desc: "Live stock by hub, status and person, with the hub tree.", icon: "chart", roles: ["admin", "im", "rig"] },
-  { href: "/inventory", title: "Inventory", desc: "Search, filter and open any card and its history.", icon: "list", roles: ["admin", "im", "rig"] },
-  { href: "/handover/send", title: "Send cards", desc: "Hand cards to an IM, IFO, FO, the rig team or a hub.", icon: "send", roles: HANDLERS },
-  { href: "/handover/receive", title: "Receive cards", desc: "Take cards back into stock at a hub.", icon: "inbox", roles: HANDLERS },
+  { href: "/inventory", title: "Inventory", desc: "Search, filter and open any item and its history.", icon: "list", roles: ["admin", "im", "rig"] },
+  { href: "/handover/send", title: "Send items", desc: "Hand items to an IM, IFO, FO, the rig team or a hub.", icon: "send", roles: HANDLERS },
+  { href: "/handover/receive", title: "Receive items", desc: "Take items back into stock at a hub.", icon: "inbox", roles: HANDLERS },
   { href: "/admin/people", title: "Manage people", desc: "The IMs, IFOs, FOs and rig team.", icon: "users", roles: ["admin", "im"] },
 ];
 

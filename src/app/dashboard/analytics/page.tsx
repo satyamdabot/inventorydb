@@ -51,7 +51,7 @@ export default async function AnalyticsPage({ searchParams }: PageProps<"/dashbo
       label: STATUS_LABELS[s],
       value: d.byStatus[s],
       href: inventory({ status: s, ...hubScope }),
-      tip: `${STATUS_LABELS[s]}\n${n(d.byStatus[s])} cards (${((d.byStatus[s] / Math.max(1, d.total)) * 100).toFixed(1)}%)`,
+      tip: `${STATUS_LABELS[s]}\n${n(d.byStatus[s])} items (${((d.byStatus[s] / Math.max(1, d.total)) * 100).toFixed(1)}%)`,
     }));
 
   return (
@@ -93,7 +93,7 @@ export default async function AnalyticsPage({ searchParams }: PageProps<"/dashbo
             <div>
               <div className={styles.heroValue}>{n(d.total)}</div>
               <div className={styles.heroLabel}>
-                {hub ? `cards currently at ${scopeName}` : "cards in total"}
+                {hub ? `items currently at ${scopeName}` : "items in total"}
               </div>
             </div>
             <div className={styles.heroSide}>
@@ -125,22 +125,22 @@ export default async function AnalyticsPage({ searchParams }: PageProps<"/dashbo
         </section>
 
         <div className={styles.grid2}>
-          <section className={styles.card} aria-label="Where cards are now">
-            <h2>Where cards are now</h2>
-            {statusRows.length ? <BarList rows={statusRows} /> : <p className={styles.muted}>No cards.</p>}
+          <section className={styles.card} aria-label="Where items are now">
+            <h2>Where items are now</h2>
+            {statusRows.length ? <BarList rows={statusRows} /> : <p className={styles.muted}>No items.</p>}
           </section>
-          <section className={styles.card} aria-label="Cards moved per day">
-            <h2>Cards moved per day</h2>
+          <section className={styles.card} aria-label="Items moved per day">
+            <h2>Items moved per day</h2>
             <ActivityChart days={d.activity} />
           </section>
         </div>
 
         {!hub && (
-          <section className={styles.card} aria-label="Cards by hub">
-            <h2>Cards by hub</h2>
+          <section className={styles.card} aria-label="Items by hub">
+            <h2>Items by hub</h2>
             <p className={styles.muted}>
-              Owned is the home hub. Held is where the card is now. Net is held minus owned: positive means
-              the hub is holding other hubs&apos; cards.
+              Owned is the home hub. Held is where the item is now. Net is held minus owned: positive means
+              the hub is holding other hubs&apos; items.
             </p>
             <div className={styles.tableScroll}>
               <table className={styles.table}>
@@ -174,8 +174,8 @@ export default async function AnalyticsPage({ searchParams }: PageProps<"/dashbo
         )}
 
         <div className={styles.grid2}>
-          <section className={styles.card} aria-label="Who has cards">
-            <h2>Who has cards</h2>
+          <section className={styles.card} aria-label="Who has items">
+            <h2>Who has items</h2>
             {d.holders.length === 0 ? (
               <p className={styles.muted}>Nothing is out right now.</p>
             ) : (
@@ -184,7 +184,7 @@ export default async function AnalyticsPage({ searchParams }: PageProps<"/dashbo
                   <thead>
                     <tr>
                       <th>Person</th>
-                      <th className={styles.num}>Cards</th>
+                      <th className={styles.num}>Items</th>
                       <th className={styles.num}>Oldest</th>
                     </tr>
                   </thead>
@@ -215,7 +215,7 @@ export default async function AnalyticsPage({ searchParams }: PageProps<"/dashbo
                   <thead>
                     <tr>
                       <th>Receiving hub</th>
-                      <th className={styles.num}>Cards</th>
+                      <th className={styles.num}>Items</th>
                       <th className={styles.num}>Waiting</th>
                     </tr>
                   </thead>
@@ -238,7 +238,7 @@ export default async function AnalyticsPage({ searchParams }: PageProps<"/dashbo
 
         <section className={styles.card} aria-label="Longest out">
           <h2>Longest out</h2>
-          <p className={styles.muted}>Cards not in stock, oldest first. Days since their last recorded movement.</p>
+          <p className={styles.muted}>Items not in stock, oldest first. Days since their last recorded movement.</p>
           {d.longestOut.length === 0 ? (
             <p className={styles.muted}>Nothing is out right now.</p>
           ) : (
@@ -278,7 +278,7 @@ export default async function AnalyticsPage({ searchParams }: PageProps<"/dashbo
               <span className={`${styles.icon} ${styles.iconGood}`} aria-hidden>
                 ✓
               </span>{" "}
-              Every card with history matches its latest event.
+              Every item with history matches its latest event.
             </p>
           ) : (
             <div>
@@ -286,8 +286,8 @@ export default async function AnalyticsPage({ searchParams }: PageProps<"/dashbo
                 <span className={`${styles.icon} ${styles.iconCritical}`} aria-hidden>
                   ✕
                 </span>{" "}
-                {d.inconsistencies.length} card(s) don&apos;t match their latest event. Fix them with a correction on
-                the card page.
+                {d.inconsistencies.length} item(s) don&apos;t match their latest event. Fix them with a correction on
+                the item page.
               </p>
               <ul className={styles.list}>
                 {d.inconsistencies.slice(0, 20).map((p) => (
@@ -300,7 +300,7 @@ export default async function AnalyticsPage({ searchParams }: PageProps<"/dashbo
           )}
           {d.noHistory > 0 && (
             <p className={styles.muted}>
-              {n(d.noHistory)} card(s) have no history yet. It starts with their first handover or correction.
+              {n(d.noHistory)} item(s) have no history yet. It starts with their first handover or correction.
             </p>
           )}
         </section>

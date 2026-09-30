@@ -4,7 +4,8 @@ import { one } from "@/lib/labels";
 import { wouldCreateCycle } from "@/lib/hub-tree";
 import { getStore } from "@/lib/store";
 import styles from "../admin.module.css";
-import { addHub, saveHub } from "./actions";
+import { addHub } from "./actions";
+import HubRow from "./HubRow";
 
 const ERRORS: Record<string, string> = {
   invalid: "Please enter a valid name.",
@@ -41,11 +42,11 @@ export default async function HubsPage({ searchParams }: PageProps<"/admin/hubs"
       <h1>Hubs</h1>
       <p className={styles.muted}>
         {hubs.length} hubs. The parent decides where a hub sits on the dashboard tree. Deactivate a hub instead
-        of deleting it so history stays intact. A hub that still holds cards can&apos;t be deactivated.
+        of deleting it so history stays intact. A hub that still holds items can&apos;t be deactivated.
       </p>
       {error === "hascards" ? (
         <p className={styles.error}>
-          That hub still holds {one(sp.n) || "some"} card(s). Move or receive them first, then deactivate it.
+          That hub still holds {one(sp.n) || "some"} item(s). Move or receive them first, then deactivate it.
         </p>
       ) : (
         ERRORS[error] && <p className={styles.error}>{ERRORS[error]}</p>
@@ -63,19 +64,7 @@ export default async function HubsPage({ searchParams }: PageProps<"/admin/hubs"
 
       <div className={styles.list}>
         {hubs.map((h) => (
-          <form key={h.hub_id} action={saveHub} className={styles.row}>
-            <input type="hidden" name="hub_id" value={h.hub_id} />
-            <input name="name" defaultValue={h.name} required />
-            <input name="city" defaultValue={h.city} />
-            {parentSelect(h.hub_id, h.parent_hub)}
-            <label>
-              <input type="checkbox" name="is_central" defaultChecked={h.is_central === "true"} /> Central
-            </label>
-            <label>
-              <input type="checkbox" name="active" defaultChecked={h.active !== "false"} /> Active
-            </label>
-            <button type="submit">Save</button>
-          </form>
+          <HubRow key={h.hub_id} hub={h} parentOptions={parentOptions(h.hub_id)} />
         ))}
       </div>
     </main>

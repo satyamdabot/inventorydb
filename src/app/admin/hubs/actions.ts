@@ -57,7 +57,7 @@ export async function saveHub(formData: FormData) {
   if (parent && !hubs.some((h) => h.hub_id === parent)) redirect("/admin/hubs?error=invalid");
   if (parent && wouldCreateCycle(hubs, hub_id, parent)) redirect("/admin/hubs?error=loop");
 
-  // A hub that still holds cards can't be switched off, or those cards would vanish from the send list.
+  // A hub that still holds items can't be switched off, or those items would vanish from the send list.
   const active = flag(formData.get("active"));
   if (active === "false") {
     const stillHolds = (await store.list("items")).filter((i) => i.current_hub === hub_id).length;

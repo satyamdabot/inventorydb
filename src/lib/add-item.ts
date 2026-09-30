@@ -30,7 +30,7 @@ export interface AddItemPlan {
 export function planAddItem(input: AddItemInput, existing: Item[], ctx: AddItemContext): AddItemPlan {
   const errors: string[] = [];
   const itemId = input.itemId.trim();
-  if (!itemId) errors.push("Scan or type the card's serial.");
+  if (!itemId) errors.push("Scan or type the item's serial.");
   else if (existing.some((i) => i.item_id.toUpperCase() === itemId.toUpperCase())) {
     errors.push(`${itemId} is already in the inventory.`);
   }

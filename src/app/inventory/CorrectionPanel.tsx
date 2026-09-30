@@ -19,7 +19,7 @@ export default function CorrectionPanel({
     <fieldset className={styles.details}>
       <legend>Correct status / location</legend>
       <p className={styles.muted}>
-        Sets where the selected cards really are. It is recorded as a correction with your name and the
+        Sets where the selected items really are. It is recorded as a correction with your name and the
         note. Holder is used for Pending, Traveling, With FO and With rig team only.
       </p>
       {showScan && (

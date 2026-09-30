@@ -3,6 +3,7 @@ import { requireRole } from "@/lib/authz";
 import { STATUS_LABELS, one } from "@/lib/labels";
 import { STATUSES, type Status } from "@/lib/schema";
 import { getStore } from "@/lib/store";
+import { formatIst } from "@/lib/time";
 import styles from "../admin/admin.module.css";
 import AddCardForm from "./AddCardForm";
 import { applyCorrection } from "./actions";
@@ -62,6 +63,7 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
           <th>Status</th>
           <th>Current hub</th>
           <th>Holder</th>
+          {holder && <th>Since</th>}
           <th>Home hub</th>
         </tr>
       </thead>
@@ -82,6 +84,7 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
             <td>{STATUS_LABELS[i.status] ?? i.status}</td>
             <td>{hubName.get(i.current_hub) ?? i.current_hub}</td>
             <td>{personName.get(i.current_holder) ?? i.current_holder}</td>
+            {holder && <td>{formatIst(i.updated_at)}</td>}
             <td>{hubName.get(i.home_hub) ?? i.home_hub}</td>
           </tr>
         ))}
@@ -99,17 +102,17 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
       </div>
       {one(sp.done) && (
         <p className={styles.ok}>
-          Updated {one(sp.done)} card(s)
+          Updated {one(sp.done)} item(s)
           {Number(one(sp.same)) > 0 && `, ${one(sp.same)} already in that state`}.
         </p>
       )}
       {one(sp.error) && <p className={styles.error}>{one(sp.error)}</p>}
 
       {canAdd && (
-        <details className={styles.details}>
-          <summary>+ Add a card</summary>
+        <details className={styles.details} open={!!one(sp.added) || !!one(sp.addError) || undefined}>
+          <summary>+ Add an item</summary>
           <p className={styles.muted}>
-            For a card that isn&apos;t in the inventory yet. It starts in stock at the hub you choose, with
+            For an item that isn&apos;t in the inventory yet. It starts in stock at the hub you choose, with
             its own history from today.
           </p>
           {one(sp.added) && (
@@ -169,7 +172,7 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
       </form>
 
       <p className={styles.muted}>
-        {matches.length} of {items.length} cards. Showing {shown.length ? (page - 1) * PAGE_SIZE + 1 : 0}–
+        {matches.length} of {items.length} items. Showing {shown.length ? (page - 1) * PAGE_SIZE + 1 : 0}–
         {(page - 1) * PAGE_SIZE + shown.length}.
       </p>
 

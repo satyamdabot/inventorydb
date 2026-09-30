@@ -72,15 +72,15 @@ export function planSend(targets: Item[], input: SendInput, ctx: HandoverContext
     const recipient = ctx.people.find((p) => p.person_id === input.recipient && p.active !== "false");
     status = recipient && SEND_STATUS[recipient.role];
     holder = recipient?.person_id ?? "";
-    if (!recipient || !status) plan.errors.push("Choose the person the cards are going to.");
+    if (!recipient || !status) plan.errors.push("Choose the person the items are going to.");
   }
-  if (!activeHub(input.toHub)) plan.errors.push("Choose the location the cards are going to.");
+  if (!activeHub(input.toHub)) plan.errors.push("Choose the location the items are going to.");
 
   if (!activeHub(input.fromHub)) {
     plan.errors.push("Choose the hub you are sending from.");
   }
   const notInStock = targets.filter((t) => t.status !== "in_stock").map((t) => `${t.item_id} (${t.status})`);
-  if (notInStock.length) plan.errors.push(`Only in-stock cards can be sent. Not in stock: ${list(notInStock)}.`);
+  if (notInStock.length) plan.errors.push(`Only in-stock items can be sent. Not in stock: ${list(notInStock)}.`);
 
   // Sending from a hub means the cards are in stock there. Choosing the right hub is the fix if they are not.
   const elsewhere = targets.filter((t) => t.status === "in_stock" && t.current_hub !== input.fromHub);
@@ -129,7 +129,7 @@ export function planReceive(
   const plan: HandoverPlan = { events: [], items: [], errors: [] };
   if (!ctx.hubs.some((h) => h.hub_id === input.hub && h.active !== "false")) plan.errors.push("Choose the receiving hub.");
   const wrong = targets.filter((t) => !RECEIVABLE.has(t.status)).map((t) => `${t.item_id} (${t.status})`);
-  if (wrong.length) plan.errors.push(`These cards are not waiting to be received: ${list(wrong)}.`);
+  if (wrong.length) plan.errors.push(`These items are not waiting to be received: ${list(wrong)}.`);
 
   // A card sent to a hub must be received at that hub, otherwise it would silently land in the wrong stock.
   // (Cards coming back from an IFO, FO or rig team have no fixed hub, so the receiver's hub is used.)

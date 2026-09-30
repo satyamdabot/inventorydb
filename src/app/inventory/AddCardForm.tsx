@@ -63,7 +63,7 @@ export default function AddCardForm({ hubs }: { hubs: { hub_id: string; name: st
       <input name="brand" placeholder="Brand" value={brand} onChange={(e) => setBrand(e.target.value)} />
       <input name="model" placeholder="Model" value={model} onChange={(e) => setModel(e.target.value)} />
       <input name="price" placeholder="Price" inputMode="decimal" value={price} onChange={(e) => setPrice(e.target.value)} />
-      <button type="submit">Add card</button>
+      <button type="submit">Add item</button>
       {pending ? <span className={styles.muted}>Looking up…</span> : note && <span className={styles.muted}>{note}</span>}
     </form>
   );
