@@ -7,6 +7,7 @@ export interface DashboardOptions {
   scope?: string[]; // several hub_ids at once (a hub and the hubs under it). Takes the place of `hub`.
   days: number; // length of the activity window
   now: Date;
+  endOffsetDays?: number; // shifts the activity window back this many days (e.g. 1 for "yesterday"); everything else on the dashboard still reflects `now`
 }
 
 export interface HubRow {
@@ -172,8 +173,9 @@ export function computeDashboard(
   // One bucket per day for the window, oldest first, so quiet days show as gaps in the chart.
   const activity: ActivityDay[] = [];
   const index = new Map<string, ActivityDay>();
+  const endOffset = opts.endOffsetDays ?? 0;
   for (let n = opts.days - 1; n >= 0; n--) {
-    const day = { date: dateKey(new Date(opts.now.getTime() - n * DAY)), sent: 0, received: 0, corrected: 0 };
+    const day = { date: dateKey(new Date(opts.now.getTime() - (n + endOffset) * DAY)), sent: 0, received: 0, corrected: 0 };
     activity.push(day);
     index.set(day.date, day);
   }

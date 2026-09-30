@@ -38,8 +38,15 @@ export default async function AnalyticsPage({ searchParams }: PageProps<"/dashbo
   ]);
 
   const hub = hubs.some((h) => h.hub_id === one(sp.hub)) ? one(sp.hub) : "";
-  const range = RANGES.includes(Number(one(sp.days))) ? Number(one(sp.days)) : 30;
-  const d = computeDashboard(items, events, people, hubs, { hub, days: range, now: new Date() });
+  const period = one(sp.days);
+  const isYesterday = period === "yesterday";
+  const range = isYesterday ? 1 : RANGES.includes(Number(period)) ? Number(period) : 30;
+  const d = computeDashboard(items, events, people, hubs, {
+    hub,
+    days: range,
+    now: new Date(),
+    endOffsetDays: isYesterday ? 1 : 0,
+  });
   const hubScope: Record<string, string> = hub ? { hub } : {};
   const scopeName = hub ? (hubs.find((h) => h.hub_id === hub)?.name ?? hub) : "all hubs";
 
@@ -73,7 +80,8 @@ export default async function AnalyticsPage({ searchParams }: PageProps<"/dashbo
                 </option>
               ))}
           </select>
-          <select name="days" defaultValue={String(range)} aria-label="Activity period">
+          <select name="days" defaultValue={isYesterday ? "yesterday" : String(range)} aria-label="Activity period">
+            <option value="yesterday">Activity: yesterday</option>
             {RANGES.map((r) => (
               <option key={r} value={r}>
                 Activity: last {r} days
@@ -81,7 +89,7 @@ export default async function AnalyticsPage({ searchParams }: PageProps<"/dashbo
             ))}
           </select>
           <button type="submit">Apply</button>
-          {(hub || range !== 30) && (
+          {(hub || isYesterday || range !== 30) && (
             <Link href="/dashboard/analytics" className={styles.link}>
               Reset
             </Link>
@@ -130,7 +138,7 @@ export default async function AnalyticsPage({ searchParams }: PageProps<"/dashbo
             {statusRows.length ? <BarList rows={statusRows} /> : <p className={styles.muted}>No items.</p>}
           </section>
           <section className={styles.card} aria-label="Items moved per day">
-            <h2>Items moved per day</h2>
+            <h2>{isYesterday ? "Items moved yesterday" : "Items moved per day"}</h2>
             <ActivityChart days={d.activity} />
           </section>
         </div>

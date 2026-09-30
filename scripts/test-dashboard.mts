@@ -40,6 +40,16 @@ assert.equal(d.byStatus.pending, 1);
 assert.equal(d.byStatus.lost, 1);
 assert.equal(d.outCount, 3);
 
+// endOffsetDays shifts the activity window back without touching current-state numbers ("Yesterday" on Analytics).
+// E2 (check_out) occurred on the 24th; E4/E5 occurred on the 25th, which is "now".
+const yesterday = computeDashboard(items, events, people, hubs, { hub: "", days: 1, now, endOffsetDays: 1 });
+assert.equal(yesterday.activity.length, 1);
+assert.equal(yesterday.activity[0].date, "2026-09-24");
+assert.equal(yesterday.activity[0].sent, 1);
+assert.equal(yesterday.activity[0].received, 0);
+assert.equal(yesterday.total, d.total); // current-state numbers are unaffected by the offset
+assert.equal(yesterday.byStatus.with_fo, d.byStatus.with_fo);
+
 // B out 10 days, C out 1 day, D out 0 days.
 assert.equal(d.longestOut[0].item_id, "B");
 assert.equal(d.longestOut[0].days, 10);
