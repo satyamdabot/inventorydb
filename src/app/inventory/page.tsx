@@ -4,7 +4,8 @@ import { STATUS_LABELS, one } from "@/lib/labels";
 import { STATUSES, type Status } from "@/lib/schema";
 import { getStore } from "@/lib/store";
 import styles from "../admin/admin.module.css";
-import { addItem, applyCorrection } from "./actions";
+import AddCardForm from "./AddCardForm";
+import { applyCorrection } from "./actions";
 import CorrectionPanel from "./CorrectionPanel";
 
 const PAGE_SIZE = 100;
@@ -117,24 +118,7 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
             </p>
           )}
           {one(sp.addError) && <p className={styles.error}>{one(sp.addError)}</p>}
-          <form action={addItem} className={styles.row}>
-            <input name="itemId" placeholder="Serial (scan or type)" required autoComplete="off" />
-            <select name="homeHub" defaultValue="" required aria-label="Home hub">
-              <option value="" disabled>
-                Home hub
-              </option>
-              {activeHubs.map((h) => (
-                <option key={h.hub_id} value={h.hub_id}>
-                  {h.name}
-                </option>
-              ))}
-            </select>
-            <input name="prismNo" placeholder="Prism no." />
-            <input name="brand" placeholder="Brand" />
-            <input name="model" placeholder="Model" />
-            <input name="price" placeholder="Price" inputMode="decimal" />
-            <button type="submit">Add card</button>
-          </form>
+          <AddCardForm hubs={activeHubs} />
         </details>
       )}
 

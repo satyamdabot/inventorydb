@@ -4,6 +4,8 @@ import { randomUUID } from "node:crypto";
 import { redirect } from "next/navigation";
 import { requireRole } from "@/lib/authz";
 import { planAddItem } from "@/lib/add-item";
+import { findAsset } from "@/lib/asset-lookup";
+import { loadAssetRecords } from "@/lib/asset-sheet";
 import { planCorrection } from "@/lib/correction";
 import { getStore } from "@/lib/store";
 import { istTimestamp } from "@/lib/time";
@@ -88,4 +90,12 @@ export async function addItem(formData: FormData) {
 
   await store.commitBatch([plan.event!], [plan.item!]);
   redirect(`/inventory?${new URLSearchParams({ added: plan.item!.item_id })}`);
+}
+
+/** Look up brand, model, prism no. and price for a serial from the customer's asset sheet, to auto-fill Add a card. */
+export async function lookupAsset(serial: string) {
+  await requireRole("admin", "im");
+  const records = await loadAssetRecords();
+  const found = findAsset(records, serial);
+  return found ? { brand: found.brand, model: found.model, prismNo: found.prismNo, price: found.price } : null;
 }
