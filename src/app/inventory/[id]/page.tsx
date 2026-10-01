@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { parseAttributes } from "@/lib/attributes";
 import { requireRole } from "@/lib/authz";
 import { STATUS_LABELS, one } from "@/lib/labels";
 import { getStore } from "@/lib/store";
@@ -7,15 +8,6 @@ import { formatIst } from "@/lib/time";
 import styles from "../../admin/admin.module.css";
 import { applyCorrection } from "../actions";
 import CorrectionPanel from "../CorrectionPanel";
-
-function readAttributes(raw: string): [string, string][] | string {
-  if (!raw) return [];
-  try {
-    const obj = JSON.parse(raw);
-    if (obj && typeof obj === "object") return Object.entries(obj).map(([k, v]) => [k, String(v)]);
-  } catch {}
-  return raw;
-}
 
 export default async function ItemPage({ params, searchParams }: PageProps<"/inventory/[id]">) {
   const user = await requireRole();
@@ -28,7 +20,7 @@ export default async function ItemPage({ params, searchParams }: PageProps<"/inv
   const [hubs, people, history] = await Promise.all([store.list("hubs"), store.list("people"), store.getHistory(id)]);
   const hubName = new Map(hubs.map((h) => [h.hub_id, h.name]));
   const personName = new Map(people.map((p) => [p.person_id, p.name]));
-  const attrs = readAttributes(item.attributes);
+  const attrs = parseAttributes(item.attributes);
 
   return (
     <main className={styles.page}>

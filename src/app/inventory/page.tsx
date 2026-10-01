@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { formatAttributes } from "@/lib/attributes";
 import { requireRole } from "@/lib/authz";
 import { STATUS_LABELS, one } from "@/lib/labels";
 import { STATUSES, type Status } from "@/lib/schema";
@@ -60,6 +61,7 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
           <th>Prism no.</th>
           <th>Brand</th>
           <th>Model</th>
+          <th>Attributes</th>
           <th>Status</th>
           <th>Current hub</th>
           <th>Holder</th>
@@ -81,6 +83,7 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
             <td>{i.prism_no}</td>
             <td>{i.brand}</td>
             <td>{i.model}</td>
+            <td>{formatAttributes(i.attributes)}</td>
             <td>{STATUS_LABELS[i.status] ?? i.status}</td>
             <td>{hubName.get(i.current_hub) ?? i.current_hub}</td>
             <td>{personName.get(i.current_holder) ?? i.current_holder}</td>
