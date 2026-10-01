@@ -84,7 +84,10 @@ assert.match(planSend([item("A")], { recipient: "", toHub: "bangalore", fromHub:
 
 // Receive puts cards back in stock at the chosen hub with no holder.
 const back = planReceive(
-  [item("A", { status: "with_fo", current_holder: "fo-ravi", current_hub: "kadapa" }), item("B", { status: "traveling", current_holder: "ifo-amit" })],
+  [
+    item("A", { status: "with_fo", current_holder: "fo-ravi", current_hub: "kadapa" }),
+    item("B", { status: "traveling", current_holder: "ifo-amit", current_hub: "kadapa" }),
+  ],
   { hub: "kadapa", note: "", expected: 2 },
   ctx,
 );
@@ -95,6 +98,25 @@ assert.equal(back.items[1].current_hub, "kadapa");
 assert.equal(back.items[1].current_holder, "");
 assert.equal(back.events[1].from_person, "ifo-amit");
 assert.equal(back.events[0].action, "receive");
+
+// Hub-lock: IM, IFO and the rig team must be received at the exact hub they were sent to. An FO card has
+// no fixed hub (any IM can collect it back from wherever), so it's received anywhere with no error.
+assert.match(
+  planReceive([item("A", { status: "traveling", current_holder: "ifo-amit", current_hub: "bangalore" })], { hub: "kadapa", note: "" }, ctx).errors[0],
+  /Sent to a different hub/,
+);
+assert.match(
+  planReceive([item("A", { status: "with_rig", current_holder: "rig-s", current_hub: "bangalore" })], { hub: "kadapa", note: "" }, ctx).errors[0],
+  /Sent to a different hub/,
+);
+assert.deepEqual(
+  planReceive([item("A", { status: "with_fo", current_holder: "fo-ravi", current_hub: "bangalore" })], { hub: "kadapa", note: "" }, ctx).errors,
+  [],
+);
+assert.deepEqual(
+  planReceive([item("A", { status: "with_internal", current_holder: "Some Name", current_hub: "bangalore" })], { hub: "kadapa", note: "" }, ctx).errors,
+  [],
+);
 
 // Count mismatch is flagged in the note, not blocked.
 const short = planReceive([item("A", { status: "pending", current_holder: "im-kad", current_hub: "kadapa" })], { hub: "kadapa", note: "one missing", expected: 3 }, ctx);
