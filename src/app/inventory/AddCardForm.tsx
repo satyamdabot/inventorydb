@@ -44,7 +44,7 @@ export default function AddCardForm({ hubs }: { hubs: Hubs }) {
   }
 
   function changeSerial(value: string) {
-    // Invalidate any lookup still running for the previous serial.
+    // Ignore any pending lookup for the previous serial.
     requestId.current += 1;
     lastSuccessfulSerial.current = "";
 
@@ -60,17 +60,18 @@ export default function AddCardForm({ hubs }: { hubs: Hubs }) {
 
     const normalized = trimmed.toLowerCase();
 
-    // Do not overwrite manual edits when leaving the same serial again.
+    // Preserve manual edits after a successful lookup.
     if (lastSuccessfulSerial.current === normalized) return;
 
     const currentRequest = ++requestId.current;
+
     setLookingUp(true);
     setNote("");
 
     try {
       const found = await lookupAsset(trimmed);
 
-      // Ignore a response if the serial changed while it was loading.
+      // The serial may have changed while the lookup was running.
       if (currentRequest !== requestId.current) return;
 
       if (!found) {
@@ -85,20 +86,21 @@ export default function AddCardForm({ hubs }: { hubs: Hubs }) {
       setBrand(found.brand);
       setModel(found.model);
       setPrice(found.price);
-      setCapacity(found.capacity);
-      setCardType(found.cardType);
+      setCapacity(found.capacity ?? "");
+      setCardType(found.cardType ?? "");
 
       lastSuccessfulSerial.current = normalized;
 
       const missing: string[] = [];
-      if (!found.capacity) missing.push("capacity");
+
+      if (!found.capacity) missing.push("storage");
       if (!found.cardType) missing.push("card type");
       if (!found.price) missing.push("price");
 
       setNote(
         missing.length
           ? `Asset found. Please fill in missing ${missing.join(", ")}.`
-          : "Asset found. Capacity, card type and price loaded."
+          : "Asset found. Storage, card type and price loaded."
       );
     } catch {
       if (currentRequest !== requestId.current) return;
@@ -179,29 +181,49 @@ export default function AddCardForm({ hubs }: { hubs: Hubs }) {
         readOnly={lookingUp}
       />
 
-      <select
-        name="capacity"
-        aria-label="Capacity"
-        value={capacity}
-        onChange={(e) => setCapacity(e.target.value)}
-        disabled={lookingUp}
+      {/* Storage: auto-filled by lookup and editable afterwards. */}
+      <label
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 6,
+        }}
       >
-        <option value="">Select capacity</option>
-        <option value="256 GB">256 GB</option>
-        <option value="512 GB">512 GB</option>
-      </select>
+        <span>Storage of card</span>
 
-      <select
-        name="cardType"
-        aria-label="Card type or colour"
-        value={cardType}
-        onChange={(e) => setCardType(e.target.value)}
-        disabled={lookingUp}
+        <select
+          name="capacity"
+          value={capacity}
+          onChange={(e) => setCapacity(e.target.value)}
+          disabled={lookingUp}
+        >
+          <option value="">Select storage</option>
+          <option value="256 GB">256 GB</option>
+          <option value="512 GB">512 GB</option>
+        </select>
+      </label>
+
+      {/* Card type / colour: auto-filled if present in the asset sheet. */}
+      <label
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 6,
+        }}
       >
-        <option value="">Select card type</option>
-        <option value="Black">Black</option>
-        <option value="Green">Green</option>
-      </select>
+        <span>Type of card</span>
+
+        <select
+          name="cardType"
+          value={cardType}
+          onChange={(e) => setCardType(e.target.value)}
+          disabled={lookingUp}
+        >
+          <option value="">Select card type</option>
+          <option value="Black">Black</option>
+          <option value="Green">Green</option>
+        </select>
+      </label>
 
       <input
         name="price"
@@ -218,7 +240,11 @@ export default function AddCardForm({ hubs }: { hubs: Hubs }) {
 
       <AddButton lookingUp={lookingUp} />
 
-      <span className={styles.muted} role="status" aria-live="polite">
+      <span
+        className={styles.muted}
+        role="status"
+        aria-live="polite"
+      >
         {lookingUp ? "Looking up…" : note}
       </span>
     </form>
