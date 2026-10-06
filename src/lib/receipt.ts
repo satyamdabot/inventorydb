@@ -4,81 +4,218 @@ export interface ReceiptLine {
   itemId: string;
   brand: string;
   model: string;
-  price: string; // raw, as stored; format with formatPrice() for display
+
+  // Original item price, as stored.
+  price: string;
+
   statusAfter: Status;
+
+  // Manually supplied penalty for this item, in rupees.
+  penalty: number;
+  penaltyReason: string;
 }
 
 export interface BatchSummary {
   batchId: string;
   action: Action;
-  occurredAt: string; // IST, as stored
+  occurredAt: string;
   fromName: string;
   toName: string;
   hubId: string;
   hubName: string;
   note: string;
   items: ReceiptLine[];
-  totalPrice: number | null; // sum of every priced card, null when none of them have a usable price
+
+  // Item value only. This is not a charge or penalty.
+  totalPrice: number | null;
+
+  // Penalties are kept separate from item value.
+  totalPenalty: number;
 }
 
-/** "7500" -> "₹7,500". Blank or unparseable input (a card with no price on file) shows as nothing. */
+export interface ItemPenalty {
+  amount: number;
+  reason: string;
+}
+
+// Pass penalties for the requested batch, keyed by item ID.
+// Missing entries have zero penalty.
+export type PenaltiesByItem = Readonly<
+  Record<string, ItemPenalty | undefined>
+>;
+
+/**
+ * Format a stored item price in rupees.
+ * Blank or invalid prices display as an empty string.
+ */
 export function formatPrice(raw: string): string {
   const n = Number(raw);
-  if (raw.trim() === "" || !Number.isFinite(n)) return "";
-  return `₹${n.toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
+
+  if (raw.trim() === "" || !Number.isFinite(n)) {
+    return "";
+  }
+
+  return `₹${n.toLocaleString("en-IN", {
+    maximumFractionDigits: 2,
+  })}`;
+}
+
+/**
+ * Format a penalty in rupees.
+ * Zero is displayed explicitly.
+ */
+export function formatPenalty(amount: number): string {
+  return `₹${validatePenaltyAmount(amount).toLocaleString("en-IN", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 function parsePrice(raw: string): number | undefined {
   const n = Number(raw);
-  return raw.trim() !== "" && Number.isFinite(n) ? n : undefined;
+
+  return raw.trim() !== "" && Number.isFinite(n)
+    ? n
+    : undefined;
 }
 
 /**
- * The batch id from whatever was scanned or pasted: the receipt's own QR (a full URL ending in the id),
- * or the id typed or scanned on its own. Trims whitespace and a trailing slash either way.
+ * Reject invalid amounts rather than silently changing them.
+ * Amounts are rounded to the nearest paise.
+ */
+function validatePenaltyAmount(amount: number): number {
+  if (!Number.isFinite(amount) || amount < 0) {
+    throw new Error(
+      "Penalty must be a finite number greater than or equal to zero."
+    );
+  }
+
+  const paise = Math.round(amount * 100);
+
+  if (!Number.isSafeInteger(paise)) {
+    throw new Error("Penalty amount is too large.");
+  }
+
+  return paise / 100;
+}
+
+/**
+ * Extract the batch ID from a receipt URL or a plain ID.
+ * Removes query strings, fragments and trailing slashes.
  */
 export function extractBatchId(input: string): string {
   const trimmed = input.trim();
-  if (!trimmed) return "";
-  const withoutQuery = trimmed.split(/[?#]/, 1)[0];
+
+  if (!trimmed) {
+    return "";
+  }
+
+  const withoutQuery = trimmed.split(/[#?]/, 1)[0];
   const withoutSlash = withoutQuery.replace(/\/+$/, "");
   const parts = withoutSlash.split("/");
+
   return parts[parts.length - 1];
 }
 
 /**
- * Everything about one batch handover: who, where, when, and every card in it with its details. All rows
- * of one batch share the same action, time, sender, recipient, hub and note, so the first row stands for
- * the batch and the rest just contribute their item. Undefined when the batch id matches no event.
+ * Summarize one batch handover.
+ *
+ * The optional fifth argument supplies penalties for this batch.
+ * Existing calls with four arguments continue to work, with
+ * every penalty defaulting to zero.
+ *
+ * This function calculates a summary only.
+ * It does not save penalties or collect payments.
  */
 export function summarizeBatch(
   events: ItemEvent[],
   items: Item[],
   hubs: Hub[],
   batchId: string,
+  penaltiesByItem: PenaltiesByItem = {},
 ): BatchSummary | undefined {
-  if (!batchId) return undefined;
+  if (!batchId) {
+    return undefined;
+  }
+
   const rows = events.filter((e) => e.batch_id === batchId);
-  if (rows.length === 0) return undefined;
+
+  if (rows.length === 0) {
+    return undefined;
+  }
 
   const first = rows[0];
-  const itemById = new Map(items.map((i) => [i.item_id, i]));
-  const hubName = hubs.find((h) => h.hub_id === first.hub)?.name ?? first.hub;
+
+  const itemById = new Map(
+    items.map((i) => [i.item_id, i])
+  );
+
+  const hubName =
+    hubs.find((h) => h.hub_id === first.hub)?.name ??
+    first.hub;
+
+  // Prevent duplicate event rows from applying the same
+  // item-level penalty more than once within the batch.
+  const penaltyApplied = new Set<string>();
 
   const lines: ReceiptLine[] = rows
     .map((r) => {
       const item = itemById.get(r.item_id);
+
+      const configuredPenalty = Object.prototype.hasOwnProperty.call(
+        penaltiesByItem,
+        r.item_id
+      )
+        ? penaltiesByItem[r.item_id]
+        : undefined;
+
+      const applyPenalty =
+        configuredPenalty !== undefined &&
+        !penaltyApplied.has(r.item_id);
+
+      const penalty = applyPenalty
+        ? validatePenaltyAmount(configuredPenalty.amount)
+        : 0;
+
+      const penaltyReason = applyPenalty
+        ? configuredPenalty.reason.trim()
+        : "";
+
+      if (penalty > 0 && !penaltyReason) {
+        throw new Error(
+          `A penalty reason is required for item ${r.item_id}.`
+        );
+      }
+
+      if (applyPenalty) {
+        penaltyApplied.add(r.item_id);
+      }
+
       return {
         itemId: r.item_id,
         brand: item?.brand ?? "",
         model: item?.model ?? "",
         price: item?.price ?? "",
         statusAfter: r.status_after,
+        penalty,
+        penaltyReason,
       };
     })
     .sort((a, b) => a.itemId.localeCompare(b.itemId));
 
-  const prices = lines.map((l) => parsePrice(l.price)).filter((n): n is number => n !== undefined);
+  const prices = lines
+    .map((line) => parsePrice(line.price))
+    .filter((n): n is number => n !== undefined);
+
+  // Sum in paise to avoid ordinary decimal rounding artifacts.
+  const totalPenaltyPaise = lines.reduce(
+    (sum, line) => sum + Math.round(line.penalty * 100),
+    0
+  );
+
+  if (!Number.isSafeInteger(totalPenaltyPaise)) {
+    throw new Error("Total penalty amount is too large.");
+  }
 
   return {
     batchId,
@@ -90,6 +227,11 @@ export function summarizeBatch(
     hubName,
     note: first.note,
     items: lines,
-    totalPrice: prices.length ? prices.reduce((a, b) => a + b, 0) : null,
+
+    totalPrice: prices.length
+      ? prices.reduce((sum, price) => sum + price, 0)
+      : null,
+
+    totalPenalty: totalPenaltyPaise / 100,
   };
 }
