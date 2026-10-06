@@ -197,7 +197,7 @@ export async function SummaryKpis({
     {
       key: "fleet",
       icon: "layers",
-      label: "Fleet",
+      label: "Fleet — storage update",
       value: n(d.total),
       note:
         unusable > 0
