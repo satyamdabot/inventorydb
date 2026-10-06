@@ -10,7 +10,6 @@ const HUBS: { name: string; city?: string; central?: boolean }[] = [
   { name: "Gurgaon" },
   { name: "Dhawalgaon" },
   { name: "Garchuk" },
-  { name: "Salem" },
   { name: "Nagpur" },
   { name: "Nandyal" },
   { name: "Pungunar" },

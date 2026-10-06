@@ -50,7 +50,7 @@ export default async function PeoplePage({ searchParams }: PageProps<"/admin/peo
         <summary>Bulk import from a spreadsheet</summary>
         <p className={styles.muted}>
           Paste cells copied from Excel or Google Sheets, or upload a CSV. Columns: Name, Role (IM,
-          IFO, FO, Rig), Hub, Email (optional), with the header in the first row. People who already
+          IFO, FO, Rig), Hub, Email, with the header in the first row. People who already
           exist (same name and hub) are skipped, so importing twice is safe.
         </p>
         <ImportForm />
@@ -60,7 +60,7 @@ export default async function PeoplePage({ searchParams }: PageProps<"/admin/peo
         <input name="name" placeholder="Full name" required />
         {roleSelect()}
         {hubSelect()}
-        <input name="email" type="email" placeholder="Email (optional)" />
+        <input name="email" type="email" placeholder="Email" />
         <button type="submit">Add person</button>
       </form>
 

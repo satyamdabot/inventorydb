@@ -11,7 +11,7 @@ const PersonInput = z.object({
   name: z.string().trim().min(1).max(80),
   role: z.enum(["im", "ifo", "fo", "rig"]),
   hub: z.string().min(1),
-  email: z.union([z.literal(""), z.email()]),
+  email: z.email("Enter a valid email address"),
 });
 
 function parse(formData: FormData) {
