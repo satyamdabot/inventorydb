@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, type CSSProperties } from "react";
 import { useFormStatus } from "react-dom";
 import styles from "../admin/admin.module.css";
 import { addItem, lookupAsset } from "./actions";
@@ -9,6 +9,20 @@ type Hubs = {
   hub_id: string;
   name: string;
 }[];
+
+const fieldStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 6,
+  minWidth: 0,
+};
+
+const inputStyle: CSSProperties = {
+  width: "100%",
+  minWidth: 0,
+  boxSizing: "border-box",
+  padding: "10px 12px",
+};
 
 function AddButton({ lookingUp }: { lookingUp: boolean }) {
   const { pending } = useFormStatus();
@@ -33,6 +47,7 @@ export default function AddCardForm({ hubs }: { hubs: Hubs }) {
 
   const requestId = useRef(0);
   const lastSuccessfulSerial = useRef("");
+  const activeLookupSerial = useRef("");
 
   function clearDetails() {
     setPrismNo("");
@@ -44,9 +59,10 @@ export default function AddCardForm({ hubs }: { hubs: Hubs }) {
   }
 
   function changeSerial(value: string) {
-    // Ignore any pending lookup for the previous serial.
+    // Prevent an old lookup response from filling a different card.
     requestId.current += 1;
     lastSuccessfulSerial.current = "";
+    activeLookupSerial.current = "";
 
     setSerial(value);
     setLookingUp(false);
@@ -54,16 +70,30 @@ export default function AddCardForm({ hubs }: { hubs: Hubs }) {
     clearDetails();
   }
 
-  async function lookup(value: string) {
+  async function lookup(value: string, force = false) {
     const trimmed = value.trim();
-    if (!trimmed) return;
+
+    if (!trimmed) {
+      setNote("Enter or scan an Asset Tag first.");
+      return;
+    }
 
     const normalized = trimmed.toLowerCase();
 
-    // Preserve manual edits after a successful lookup.
-    if (lastSuccessfulSerial.current === normalized) return;
+    // Avoid duplicate requests for the same serial.
+    if (activeLookupSerial.current === normalized) return;
+
+    // Automatic lookup should not overwrite manually edited fields.
+    // The Fetch details button can explicitly fetch them again.
+    if (
+      !force &&
+      lastSuccessfulSerial.current === normalized
+    ) {
+      return;
+    }
 
     const currentRequest = ++requestId.current;
+    activeLookupSerial.current = normalized;
 
     setLookingUp(true);
     setNote("");
@@ -71,21 +101,22 @@ export default function AddCardForm({ hubs }: { hubs: Hubs }) {
     try {
       const found = await lookupAsset(trimmed);
 
-      // The serial may have changed while the lookup was running.
       if (currentRequest !== requestId.current) return;
 
       if (!found) {
+        lastSuccessfulSerial.current = "";
         clearDetails();
+
         setNote(
-          "No asset-sheet match found. Enter the card details manually."
+          "No matching Asset Tag was found. You can enter the details manually."
         );
         return;
       }
 
-      setPrismNo(found.prismNo);
-      setBrand(found.brand);
-      setModel(found.model);
-      setPrice(found.price);
+      setPrismNo(found.prismNo ?? "");
+      setBrand(found.brand ?? "");
+      setModel(found.model ?? "");
+      setPrice(found.price ?? "");
       setCapacity(found.capacity ?? "");
       setCardType(found.cardType ?? "");
 
@@ -99,154 +130,238 @@ export default function AddCardForm({ hubs }: { hubs: Hubs }) {
 
       setNote(
         missing.length
-          ? `Asset found. Please fill in missing ${missing.join(", ")}.`
+          ? `Asset found. Missing in lookup: ${missing.join(
+              ", "
+            )}. Select or enter these fields manually.`
           : "Asset found. Storage, card type and price loaded."
       );
     } catch {
       if (currentRequest !== requestId.current) return;
 
+      lastSuccessfulSerial.current = "";
       clearDetails();
+
       setNote(
-        "Asset lookup failed. Check the sheet connection or enter details manually."
+        "Could not load the asset sheet. Check its connection or enter the details manually."
       );
     } finally {
       if (currentRequest === requestId.current) {
+        activeLookupSerial.current = "";
         setLookingUp(false);
       }
     }
   }
 
   return (
-    <form action={addItem} className={styles.row}>
-      <input
-        name="itemId"
-        placeholder="Serial / Asset Tag"
-        aria-label="Serial or Asset Tag"
-        value={serial}
-        onChange={(e) => changeSerial(e.target.value)}
-        onBlur={(e) => {
-          void lookup(e.currentTarget.value);
+    <form
+      action={addItem}
+      aria-label="Add inventory item"
+      onSubmit={(event) => {
+        // Also block keyboard submission during a lookup.
+        if (activeLookupSerial.current) {
+          event.preventDefault();
+        }
+      }}
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 16,
+        width: "100%",
+      }}
+    >
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns:
+            "repeat(auto-fit, minmax(min(100%, 220px), 1fr))",
+          gap: 16,
+          alignItems: "start",
         }}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            void lookup(e.currentTarget.value);
-          }
-        }}
-        required
-        autoComplete="off"
-      />
-
-      <select
-        name="homeHub"
-        defaultValue=""
-        required
-        aria-label="Home hub"
       >
-        <option value="" disabled>
-          Home hub
-        </option>
+        <label style={fieldStyle}>
+          <span>Serial / Asset Tag *</span>
 
-        {hubs.map((hub) => (
-          <option key={hub.hub_id} value={hub.hub_id}>
-            {hub.name}
-          </option>
-        ))}
-      </select>
+          <input
+            name="itemId"
+            placeholder="Scan or type Asset Tag"
+            value={serial}
+            onChange={(event) =>
+              changeSerial(event.target.value)
+            }
+            onBlur={(event) => {
+              if (event.currentTarget.value.trim()) {
+                void lookup(event.currentTarget.value);
+              }
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                void lookup(event.currentTarget.value);
+              }
+            }}
+            autoComplete="off"
+            required
+            style={inputStyle}
+          />
+        </label>
 
-      <input
-        name="prismNo"
-        placeholder="Prism no."
-        aria-label="Prism number"
-        value={prismNo}
-        onChange={(e) => setPrismNo(e.target.value)}
-        readOnly={lookingUp}
-      />
+        <label style={fieldStyle}>
+          <span>Home hub *</span>
 
-      <input
-        name="brand"
-        placeholder="Brand"
-        aria-label="Brand"
-        value={brand}
-        onChange={(e) => setBrand(e.target.value)}
-        readOnly={lookingUp}
-      />
+          <select
+            name="homeHub"
+            defaultValue=""
+            required
+            style={inputStyle}
+          >
+            <option value="" disabled>
+              Select home hub
+            </option>
 
-      <input
-        name="model"
-        placeholder="Model"
-        aria-label="Model"
-        value={model}
-        onChange={(e) => setModel(e.target.value)}
-        readOnly={lookingUp}
-      />
+            {hubs.map((hub) => (
+              <option key={hub.hub_id} value={hub.hub_id}>
+                {hub.name}
+              </option>
+            ))}
+          </select>
+        </label>
 
-      {/* Storage: auto-filled by lookup and editable afterwards. */}
-      <label
+        <label style={fieldStyle}>
+          <span>Prism number</span>
+
+          <input
+            name="prismNo"
+            placeholder="Prism number"
+            value={prismNo}
+            onChange={(event) =>
+              setPrismNo(event.target.value)
+            }
+            readOnly={lookingUp}
+            style={inputStyle}
+          />
+        </label>
+
+        <label style={fieldStyle}>
+          <span>Brand</span>
+
+          <input
+            name="brand"
+            placeholder="Brand"
+            value={brand}
+            onChange={(event) =>
+              setBrand(event.target.value)
+            }
+            readOnly={lookingUp}
+            style={inputStyle}
+          />
+        </label>
+
+        <label style={fieldStyle}>
+          <span>Model</span>
+
+          <input
+            name="model"
+            placeholder="Model"
+            value={model}
+            onChange={(event) =>
+              setModel(event.target.value)
+            }
+            readOnly={lookingUp}
+            style={inputStyle}
+          />
+        </label>
+
+        {/* STORAGE OF CARD */}
+        <label style={fieldStyle}>
+          <span>Storage of card</span>
+
+          <select
+            name="capacity"
+            value={capacity}
+            onChange={(event) =>
+              setCapacity(event.target.value)
+            }
+            disabled={lookingUp}
+            style={inputStyle}
+          >
+            <option value="">Select storage</option>
+            <option value="256 GB">256 GB</option>
+            <option value="512 GB">512 GB</option>
+          </select>
+        </label>
+
+        {/* TYPE / COLOUR OF CARD */}
+        <label style={fieldStyle}>
+          <span>Type of card / colour</span>
+
+          <select
+            name="cardType"
+            value={cardType}
+            onChange={(event) =>
+              setCardType(event.target.value)
+            }
+            disabled={lookingUp}
+            style={inputStyle}
+          >
+            <option value="">Select card type</option>
+            <option value="Black">Black</option>
+            <option value="Green">Green</option>
+          </select>
+        </label>
+
+        {/* PRICE */}
+        <label style={fieldStyle}>
+          <span>Price / source penalty (₹)</span>
+
+          <input
+            name="price"
+            type="number"
+            min="0"
+            step="0.01"
+            placeholder="Enter amount"
+            inputMode="decimal"
+            value={price}
+            onChange={(event) =>
+              setPrice(event.target.value)
+            }
+            readOnly={lookingUp}
+            style={inputStyle}
+          />
+        </label>
+      </div>
+
+      <div
         style={{
           display: "flex",
-          flexDirection: "column",
-          gap: 6,
+          flexWrap: "wrap",
+          gap: 12,
+          alignItems: "center",
         }}
       >
-        <span>Storage of card</span>
-
-        <select
-          name="capacity"
-          value={capacity}
-          onChange={(e) => setCapacity(e.target.value)}
-          disabled={lookingUp}
+        <button
+          type="button"
+          disabled={lookingUp || !serial.trim()}
+          onClick={() => {
+            void lookup(serial, true);
+          }}
         >
-          <option value="">Select storage</option>
-          <option value="256 GB">256 GB</option>
-          <option value="512 GB">512 GB</option>
-        </select>
-      </label>
+          {lookingUp ? "Fetching…" : "Fetch details"}
+        </button>
 
-      {/* Card type / colour: auto-filled if present in the asset sheet. */}
-      <label
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: 6,
-        }}
-      >
-        <span>Type of card</span>
+        <AddButton lookingUp={lookingUp} />
+      </div>
 
-        <select
-          name="cardType"
-          value={cardType}
-          onChange={(e) => setCardType(e.target.value)}
-          disabled={lookingUp}
-        >
-          <option value="">Select card type</option>
-          <option value="Black">Black</option>
-          <option value="Green">Green</option>
-        </select>
-      </label>
-
-      <input
-        name="price"
-        type="number"
-        min="0"
-        step="0.01"
-        placeholder="Price / source penalty (₹)"
-        aria-label="Price in rupees"
-        inputMode="decimal"
-        value={price}
-        onChange={(e) => setPrice(e.target.value)}
-        readOnly={lookingUp}
-      />
-
-      <AddButton lookingUp={lookingUp} />
-
-      <span
+      <p
         className={styles.muted}
         role="status"
         aria-live="polite"
+        style={{ margin: 0 }}
       >
-        {lookingUp ? "Looking up…" : note}
-      </span>
+        {lookingUp
+          ? "Looking up card details…"
+          : note ||
+            "Scan an Asset Tag or click Fetch details. You can edit the returned details before saving."}
+      </p>
     </form>
   );
 }
