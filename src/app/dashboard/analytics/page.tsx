@@ -333,164 +333,179 @@ export default async function AnalyticsPage({
 
         <div className={styles.grid2}>
           <section
-            className={styles.card}
-            aria-label="Who has items"
-            style={{ minWidth: 0 }}
-          >
-            <h2>Who has items</h2>
+  className={styles.card}
+  aria-label="Who has items"
+  style={{ minWidth: 0 }}
+>
+  <h2>Who has items</h2>
 
-            {d.holders.length === 0 ? (
-              <p className={styles.muted}>
-                Nothing is out right now.
-              </p>
-            ) : (
-              <div
-                className={styles.tableScroll}
-                role="region"
-                aria-label="Who has items — scrollable table"
-                tabIndex={0}
-                style={holderScrollStyle}
+  <div
+    className={styles.tableScroll}
+    role="region"
+    aria-label="Who has items — scrollable table"
+    tabIndex={0}
+    style={{
+      maxHeight: "400px",
+      maxWidth: "100%",
+      overflowY: "auto",
+      overflowX: "auto",
+    }}
+  >
+    <table
+      className={styles.table}
+      style={{
+        width: "100%",
+        minWidth: "420px",
+        borderCollapse: "separate",
+        borderSpacing: 0,
+      }}
+    >
+      <thead>
+        <tr>
+          <th
+            scope="col"
+            style={{
+              position: "sticky",
+              top: 0,
+              zIndex: 2,
+              backgroundColor: "#1e293b",
+              color: "#ffffff",
+            }}
+          >
+            Person
+          </th>
+
+          <th
+            scope="col"
+            className={styles.num}
+            style={{
+              position: "sticky",
+              top: 0,
+              zIndex: 2,
+              backgroundColor: "#1e293b",
+              color: "#ffffff",
+            }}
+          >
+            Items
+          </th>
+
+          <th
+            scope="col"
+            className={styles.num}
+            style={{
+              position: "sticky",
+              top: 0,
+              zIndex: 2,
+              backgroundColor: "#1e293b",
+              color: "#ffffff",
+            }}
+          >
+            Oldest
+          </th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {/* Display all person rows first. */}
+        {d.holders.map((h) => (
+          <tr key={h.person_id}>
+            <td
+              style={{
+                whiteSpace: "normal",
+                overflowWrap: "anywhere",
+              }}
+            >
+              <Link
+                href={inventory({ holder: h.person_id })}
+                style={{
+                  display: "block",
+                  whiteSpace: "normal",
+                  overflow: "visible",
+                  textOverflow: "clip",
+                  overflowWrap: "anywhere",
+                  maxWidth: "none",
+                }}
               >
-                <table
-                  className={styles.table}
-                  style={holderTableStyle}
+                {h.name}
+              </Link>
+
+              {h.role && (
+                <span
+                  className={styles.muted}
+                  style={{ display: "block", marginTop: 4 }}
                 >
-                  <thead>
-                    <tr>
-                      <th scope="col" style={stickyHeaderStyle}>
-                        Person
-                      </th>
+                  {ROLE_LABELS[h.role]}
+                </span>
+              )}
+            </td>
 
-                      <th
-                        scope="col"
-                        className={styles.num}
-                        style={stickyHeaderStyle}
-                      >
-                        Items
-                      </th>
+            <td className={styles.num}>{n(h.count)}</td>
 
-                      <th
-                        scope="col"
-                        className={styles.num}
-                        style={stickyHeaderStyle}
-                      >
-                        Oldest
-                      </th>
-                    </tr>
-                  </thead>
+            <td className={styles.num}>
+              {days(h.oldestDays)}
+            </td>
+          </tr>
+        ))}
 
-                  <tbody>
-                    {d.holders.map((h) => (
-                      <tr key={h.person_id}>
-                        <td style={nameCellStyle}>
-                          <Link
-                            href={inventory({ holder: h.person_id })}
-                            style={fullNameStyle}
-                          >
-                            {h.name}
-                          </Link>
+        {d.holders.length === 0 && (
+          <tr>
+            <td colSpan={3} className={styles.muted}>
+              Nothing is out right now.
+            </td>
+          </tr>
+        )}
 
-                          {h.role && (
-                            <span
-                              className={styles.muted}
-                              style={{
-                                display: "block",
-                                marginTop: 4,
-                                whiteSpace: "normal",
-                              }}
-                            >
-                              {ROLE_LABELS[h.role]}
-                            </span>
-                          )}
-                        </td>
-
-                        <td className={styles.num}>
-                          {n(h.count)}
-                        </td>
-
-                        <td className={styles.num}>
-                          {days(h.oldestDays)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-
-                  <tfoot>
-                    <tr>
-                      <th
-                        scope="row"
-                        style={{
-                          ...stickyTotalStyle,
-                          textAlign: "left",
-                        }}
-                      >
-                        Grand total
-                      </th>
-
-                      <td
-                        className={styles.num}
-                        style={stickyTotalStyle}
-                      >
-                        {n(holderGrandTotal)}
-                      </td>
-
-                      <td
-                        className={styles.num}
-                        style={stickyTotalStyle}
-                      >
-                        —
-                      </td>
-                    </tr>
-                  </tfoot>
-                </table>
-              </div>
-            )}
-          </section>
-
-          <section
-            className={styles.card}
-            aria-label="Waiting to be received"
+        {/* Grand total is the LAST row — not sticky. */}
+        <tr>
+          <th
+            scope="row"
+            style={{
+              position: "static",
+              textAlign: "left",
+              borderTop: "2px solid #64748b",
+              backgroundColor: "#1e293b",
+              color: "#ffffff",
+              fontWeight: 700,
+            }}
           >
-            <h2>Waiting to be received</h2>
+            Grand total
+          </th>
 
-            {d.pending.length === 0 ? (
-              <p className={styles.muted}>No pending handovers.</p>
-            ) : (
-              <div className={styles.tableScroll}>
-                <table className={styles.table}>
-                  <thead>
-                    <tr>
-                      <th>Receiving hub</th>
-                      <th className={styles.num}>Items</th>
-                      <th className={styles.num}>Waiting</th>
-                    </tr>
-                  </thead>
-
-                  <tbody>
-                    {d.pending.map((p) => (
-                      <tr key={p.hub_id}>
-                        <td>
-                          <Link
-                            href={`/handover/receive?${new URLSearchParams({
-                              hub: p.hub_id,
-                            })}`}
-                          >
-                            {p.name}
-                          </Link>
-                        </td>
-
-                        <td className={styles.num}>{n(p.count)}</td>
-
-                        <td className={styles.num}>
-                          {days(p.oldestDays)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+          <td
+            className={styles.num}
+            style={{
+              position: "static",
+              borderTop: "2px solid #64748b",
+              backgroundColor: "#1e293b",
+              color: "#ffffff",
+              fontWeight: 700,
+            }}
+          >
+            {n(
+              d.holders.reduce(
+                (total, holder) => total + holder.count,
+                0
+              )
             )}
-          </section>
+          </td>
+
+          <td
+            className={styles.num}
+            style={{
+              position: "static",
+              borderTop: "2px solid #64748b",
+              backgroundColor: "#1e293b",
+              color: "#ffffff",
+              fontWeight: 700,
+            }}
+          >
+            —
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
         </div>
 
         <section className={styles.card} aria-label="Longest out">
