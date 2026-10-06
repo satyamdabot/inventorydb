@@ -129,7 +129,8 @@ export default async function Home({
   const email = user.email ?? "";
   const initials = [email.split("@")[0] || "?"]
     .slice(0, 2)
-    .to UpperCase ();
+    .map((s) => s[0].toUpperCase())
+    .join("");
 
   // Good morning / afternoon / evening, by the hour in India.
   const hour = Number(istTimestamp().slice(11, 13));

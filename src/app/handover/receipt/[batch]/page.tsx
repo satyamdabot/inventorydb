@@ -77,7 +77,7 @@ export default async function ReceiptPage({ params }: PageProps<"/handover/recei
               <th>Serial</th>
               <th>Brand</th>
               <th>Model</th>
-              <th>Price</th>
+              <th>Penalty</th>
               <th>Status</th>
             </tr>
           </thead>
