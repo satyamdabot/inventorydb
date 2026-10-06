@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { LATE_AFTER_HOURS, type Dashboard } from "@/lib/dashboard";
 import type { Item } from "@/lib/schema";
+import { getStore } from "@/lib/store";
 import { n } from "./charts";
 import styles from "./dashboard.module.css";
 import { Icon, type IconName } from "./icons";
@@ -10,12 +11,12 @@ const howLong = (hours: number) =>
     ? `${Math.floor(hours)} hours`
     : `${Math.floor(hours / 24)} days`;
 
-const dayText = (d: number | null) =>
-  d === null
+const dayText = (days: number | null) =>
+  days === null
     ? ""
-    : d === 0
+    : days === 0
       ? "today"
-      : `${d} day${d === 1 ? "" : "s"} ago`;
+      : `${days} day${days === 1 ? "" : "s"} ago`;
 
 interface FleetCounts {
   storage512: number;
@@ -28,21 +29,71 @@ interface FleetCounts {
 
 interface SummaryKpisProps {
   d: Dashboard;
+
+  // For a hub dashboard, include every hub ID in its scope.
+  // Multiple IDs must be comma-separated.
   hubParam?: string;
 
-  // Pass inventory items covering the same scope as d.total.
-  // Optional to keep existing callers compatible.
+  // Existing callers may pass items directly.
+  // If omitted, this component loads the items itself.
   items?: readonly Item[];
 }
 
+interface SummaryCard {
+  key: string;
+  icon: IconName;
+  label: string;
+  value: string;
+  note: string;
+  href: string;
+  meter?: number;
+  warn?: boolean;
+}
+
 /**
- * Count storage and colour from the existing attributes JSON.
+ * Safely parse the attributes JSON.
+ * Missing or invalid JSON is treated as missing card details.
+ */
+function readAttributes(raw: string): Record<string, unknown> {
+  try {
+    const parsed: unknown = JSON.parse(raw || "{}");
+
+    if (
+      parsed !== null &&
+      typeof parsed === "object" &&
+      !Array.isArray(parsed)
+    ) {
+      return parsed as Record<string, unknown>;
+    }
+  } catch {
+    // Keep the dashboard working when a record has invalid JSON.
+  }
+
+  return {};
+}
+
+/** Read a string or numeric attribute without coercing objects. */
+function attributeText(value: unknown): string {
+  if (typeof value === "string") {
+    return value.trim();
+  }
+
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return String(value);
+  }
+
+  return "";
+}
+
+/**
+ * Read the fields saved by the updated Add item action:
  *
- * Expected saved attributes:
  * {
  *   "capacity": "512 GB",
  *   "card_type": "Black"
  * }
+ *
+ * Storage and colour are separate breakdowns of the same items.
  */
 function countFleet(items: readonly Item[]): FleetCounts {
   const counts: FleetCounts = {
@@ -55,26 +106,9 @@ function countFleet(items: readonly Item[]): FleetCounts {
   };
 
   for (const item of items) {
-    let attributes: Record<string, unknown> = {};
+    const attributes = readAttributes(item.attributes);
 
-    // Invalid JSON must not break the dashboard.
-    try {
-      const parsed: unknown = JSON.parse(item.attributes || "{}");
-
-      if (
-        parsed !== null &&
-        typeof parsed === "object" &&
-        !Array.isArray(parsed)
-      ) {
-        attributes = parsed as Record<string, unknown>;
-      }
-    } catch {
-      // Missing or invalid details are counted as unknown.
-    }
-
-    // Accept "512 GB", "512gb", "512", and the equivalent 256 values.
-    const capacity = String(attributes.capacity ?? "")
-      .trim()
+    const capacity = attributeText(attributes.capacity)
       .replace(/\s+/g, "")
       .toUpperCase();
 
@@ -86,10 +120,9 @@ function countFleet(items: readonly Item[]): FleetCounts {
       counts.storageUnknown++;
     }
 
-    // Colour is counted separately from storage.
-    const colour = String(attributes.card_type ?? "")
-      .trim()
-      .toLowerCase();
+    const colour = attributeText(
+      attributes.card_type
+    ).toLowerCase();
 
     if (colour === "black") {
       counts.black++;
@@ -104,10 +137,11 @@ function countFleet(items: readonly Item[]): FleetCounts {
 }
 
 /**
- * Management summary:
- * Fleet, utilization, waiting items, and late items.
+ * Server component.
+ * Do not add "use client" to this file:
+ * getStore() must run on the server.
  */
-export function SummaryKpis({
+export async function SummaryKpis({
   d,
   hubParam,
   items,
@@ -118,32 +152,48 @@ export function SummaryKpis({
       ...params,
     })}`;
 
+  // NEW: load inventory here when the parent did not pass items.
+  // This allows the existing <SummaryKpis d={d} /> call to work.
+  const sourceItems =
+    items !== undefined
+      ? items
+      : await getStore().list("items");
+
+  // Scope the breakdown to the hub IDs supplied by a hub page.
+  const hubIds = new Set(
+    (hubParam ?? "")
+      .split(",")
+      .map((id) => id.trim())
+      .filter(Boolean)
+  );
+
+  const fleetItems =
+    hubIds.size > 0
+      ? sourceItems.filter((item) =>
+          hubIds.has(item.current_hub)
+        )
+      : sourceItems;
+
+  const fleet = countFleet(fleetItems);
+
+  // A second read can differ if inventory changed during rendering,
+  // or if the caller supplied a different hub scope.
+  const scopeMismatch = fleetItems.length !== d.total;
+
   const unusable = d.total - d.usable;
   const pct =
-    d.utilization === null ? null : Math.round(d.utilization);
+    d.utilization === null
+      ? null
+      : Math.round(d.utilization);
 
-  // Do not display invented zeros when items were not supplied.
-  const fleet = items !== undefined ? countFleet(items) : null;
+  const fleetDetails = [
+    { label: "512 GB", count: fleet.storage512 },
+    { label: "256 GB", count: fleet.storage256 },
+    { label: "Black cards", count: fleet.black },
+    { label: "Green cards", count: fleet.green },
+  ];
 
-  const fleetDetails = fleet
-    ? [
-        { label: "512 GB", count: fleet.storage512 },
-        { label: "256 GB", count: fleet.storage256 },
-        { label: "Black cards", count: fleet.black },
-        { label: "Green cards", count: fleet.green },
-      ]
-    : [];
-
-  const cards: {
-    key: string;
-    icon: IconName;
-    label: string;
-    value: string;
-    note: string;
-    href: string;
-    meter?: number;
-    warn?: boolean;
-  }[] = [
+  const cards: SummaryCard[] = [
     {
       key: "fleet",
       icon: "layers",
@@ -162,9 +212,12 @@ export function SummaryKpis({
       icon: "activity",
       label: "Utilization",
       value: pct === null ? "—" : `${pct}%`,
-      note: `${n(d.outCount)} out of ${n(d.usable)} usable items`,
+      note: `${n(d.outCount)} out of ${n(
+        d.usable
+      )} usable items`,
       href: list({
-        status: "pending,traveling,with_fo,with_rig,with_internal",
+        status:
+          "pending,traveling,with_fo,with_rig,with_internal",
       }),
       meter: pct ?? 0,
     },
@@ -194,11 +247,10 @@ export function SummaryKpis({
               d.oldestLateHours ?? 0
             )}`
           : `Nothing over ${LATE_AFTER_HOURS} hours`,
-
-      // Main dashboard links to Needs attention.
-      // Hub dashboards link to the matching inventory statuses.
       href: hubParam
-        ? list({ status: "with_fo,traveling,pending" })
+        ? list({
+            status: "with_fo,traveling,pending",
+          })
         : "/dashboard#attention",
       warn: d.lateCards > 0,
     },
@@ -208,50 +260,62 @@ export function SummaryKpis({
     <section
       className={styles.summaryGrid}
       aria-label="Management summary"
+      style={{
+        height: "auto",
+        maxHeight: "none",
+        overflow: "visible",
+      }}
     >
-      {cards.map((c) => (
+      {cards.map((card) => (
         <Link
-          key={c.key}
-          href={c.href}
+          key={card.key}
+          href={card.href}
           className={styles.summary}
           style={
-            c.key === "fleet"
-              ? { height: "auto", minWidth: 0 }
+            card.key === "fleet"
+              ? {
+                  display: "flex",
+                  flexDirection: "column",
+                  height: "auto",
+                  maxHeight: "none",
+                  minWidth: 0,
+                  overflow: "visible",
+                }
               : undefined
           }
         >
-          {/* Card heading and icon. */}
+          {/* Existing card title and icon. */}
           <span className={styles.summaryTop}>
             <span className={styles.summaryLabel}>
-              {c.label}
+              {card.label}
             </span>
 
             <span
               className={`${styles.summaryIcon} ${
-                c.warn ? styles.summaryIconWarn : ""
+                card.warn ? styles.summaryIconWarn : ""
               }`}
             >
-              <Icon name={c.icon} size={18} />
+              <Icon name={card.icon} size={18} />
             </span>
           </span>
 
-          {/* Main metric. */}
+          {/* Existing main metric. */}
           <span className={styles.summaryValue}>
-            {c.value}
+            {card.value}
           </span>
 
-          {/* Utilization progress bar. */}
-          {c.meter !== undefined && (
+          {/* Existing utilization meter. */}
+          {card.meter !== undefined && (
             <span
               className={styles.meter}
               role="img"
-              aria-label={`${c.meter}% utilization`}
+              aria-label={`${card.meter}% utilization`}
             >
               <i
                 style={{
                   width: `${Math.max(
                     0,
-                    Math.min(100, c.meter)
+                    Math.min(100, card.meter)
                   )}%`,
                 }}
               />
@@ -259,22 +323,27 @@ export function SummaryKpis({
           )}
 
           <span className={styles.summaryNote}>
-            {c.note}
+            {card.note}
           </span>
 
-          {/* NEW: storage and colour breakdown inside Fleet. */}
-          {c.key === "fleet" && fleet && (
+          {/* NEW: storage and colour details inside Fleet. */}
+          {card.key === "fleet" && (
             <span
               style={{
                 display: "block",
+                flexShrink: 0,
                 width: "100%",
                 marginTop: 12,
+                paddingTop: 12,
+                borderTop: "1px solid #cbd5e1",
+                whiteSpace: "normal",
               }}
             >
               <span
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                  gridTemplateColumns:
+                    "repeat(2, minmax(0, 1fr))",
                   gap: 8,
                 }}
               >
@@ -285,10 +354,12 @@ export function SummaryKpis({
                       display: "flex",
                       flexDirection: "column",
                       gap: 4,
-                      minWidth: 0,
                       padding: "8px 10px",
-                      border: "1px solid currentColor",
+                      minWidth: 0,
+                      border: "1px solid #cbd5e1",
                       borderRadius: 8,
+                      backgroundColor: "#f8fafc",
+                      color: "#0f172a",
                     }}
                   >
                     <span
@@ -300,21 +371,25 @@ export function SummaryKpis({
                       {detail.label}
                     </span>
 
-                    <strong style={{ fontSize: 20 }}>
+                    <strong
+                      style={{
+                        fontSize: 20,
+                        lineHeight: 1.3,
+                      }}
+                    >
                       {n(detail.count)}
                     </strong>
                   </span>
                 ))}
               </span>
 
-              {/* Keep missing or unsupported attributes visible. */}
+              {/* Never silently ignore missing attributes. */}
               {fleet.storageUnknown > 0 && (
                 <span
-                  className={styles.summaryNote}
                   style={{
                     display: "block",
                     marginTop: 8,
-                    whiteSpace: "normal",
+                    fontSize: 12,
                   }}
                 >
                   Unknown / other storage:{" "}
@@ -324,11 +399,10 @@ export function SummaryKpis({
 
               {fleet.colourUnknown > 0 && (
                 <span
-                  className={styles.summaryNote}
                   style={{
                     display: "block",
                     marginTop: 8,
-                    whiteSpace: "normal",
+                    fontSize: 12,
                   }}
                 >
                   Unknown / other colour:{" "}
@@ -336,31 +410,33 @@ export function SummaryKpis({
                 </span>
               )}
 
+              {/* Flag differing scopes or concurrent data changes. */}
+              {scopeMismatch && (
+                <span
+                  style={{
+                    display: "block",
+                    marginTop: 8,
+                    fontSize: 12,
+                    fontWeight: 600,
+                  }}
+                >
+                  Breakdown covers {n(fleetItems.length)} items;
+                  Fleet shows {n(d.total)}. Refresh the page. If
+                  this persists, check the hub scope.
+                </span>
+              )}
+
               <span
-                className={styles.summaryNote}
                 style={{
                   display: "block",
                   marginTop: 8,
-                  whiteSpace: "normal",
+                  fontSize: 12,
+                  lineHeight: 1.4,
                 }}
               >
-                Storage and colour are separate breakdowns of
-                the same fleet.
+                Storage and colour describe the same fleet.
+                Do not add the four counts together.
               </span>
-            </span>
-          )}
-
-          {/* Explain when the parent page has not passed item data. */}
-          {c.key === "fleet" && !fleet && (
-            <span
-              className={styles.summaryNote}
-              style={{
-                display: "block",
-                marginTop: 8,
-                whiteSpace: "normal",
-              }}
-            >
-              Storage and colour data not supplied.
             </span>
           )}
         </Link>
