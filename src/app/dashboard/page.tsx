@@ -293,36 +293,181 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
             )}
           </section>
 
-          <section className={styles.card} aria-label="Who has items">
-            <h2>Who has items{d.holders.length > HOLDER_ROWS && ` — top ${HOLDER_ROWS} of ${d.holders.length}`}</h2>
-            {d.holders.length === 0 ? (
-              <p className={styles.muted}>Nothing is out right now.</p>
-            ) : (
-              <div className={styles.tableScroll}>
-                <table className={styles.table}>
-                  <thead>
-                    <tr>
-                      <th>Person</th>
-                      <th className={styles.num}>Items</th>
-                      <th className={styles.num}>Longest</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {d.holders.slice(0, HOLDER_ROWS).map((h) => (
-                      <tr key={h.person_id}>
-                        <td>
-                          <Link href={inventory({ holder: h.person_id })}>{h.name}</Link>
-                          {h.role && <span className={styles.muted}> · {ROLE_LABELS[h.role]}</span>}
-                        </td>
-                        <td className={styles.num}>{n(h.count)}</td>
-                        <td className={styles.num}>{days(h.oldestDays)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+          <section
+  className={styles.card}
+  aria-label="Who has items"
+  style={{ minWidth: 0 }}
+>
+  <h2>Who has items</h2>
+
+  <div
+    className={styles.tableScroll}
+    role="region"
+    aria-label="Who has items — scrollable table"
+    tabIndex={0}
+    style={{
+      maxHeight: "400px",
+      maxWidth: "100%",
+      overflowY: "auto",
+      overflowX: "auto",
+    }}
+  >
+    <table
+      className={styles.table}
+      style={{
+        width: "100%",
+        minWidth: "420px",
+        borderCollapse: "separate",
+        borderSpacing: 0,
+      }}
+    >
+      <thead>
+        <tr>
+          <th
+            scope="col"
+            style={{
+              position: "sticky",
+              top: 0,
+              zIndex: 2,
+              backgroundColor: "#1e293b",
+              color: "#ffffff",
+            }}
+          >
+            Person
+          </th>
+
+          <th
+            scope="col"
+            className={styles.num}
+            style={{
+              position: "sticky",
+              top: 0,
+              zIndex: 2,
+              backgroundColor: "#1e293b",
+              color: "#ffffff",
+            }}
+          >
+            Items
+          </th>
+
+          <th
+            scope="col"
+            className={styles.num}
+            style={{
+              position: "sticky",
+              top: 0,
+              zIndex: 2,
+              backgroundColor: "#1e293b",
+              color: "#ffffff",
+            }}
+          >
+            Longest
+          </th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {d.holders.length === 0 ? (
+          <tr>
+            <td colSpan={3} className={styles.muted}>
+              Nothing is out right now.
+            </td>
+          </tr>
+        ) : (
+          d.holders.map((h) => (
+            <tr key={h.person_id}>
+              <td
+                style={{
+                  whiteSpace: "normal",
+                  overflow: "visible",
+                  overflowWrap: "anywhere",
+                }}
+              >
+                <Link
+                  href={inventory({ holder: h.person_id })}
+                  style={{
+                    display: "block",
+                    whiteSpace: "normal",
+                    overflow: "visible",
+                    textOverflow: "clip",
+                    overflowWrap: "anywhere",
+                    maxWidth: "none",
+                  }}
+                >
+                  {h.name}
+                </Link>
+
+                {h.role && (
+                  <span
+                    className={styles.muted}
+                    style={{ display: "block", marginTop: 4 }}
+                  >
+                    {ROLE_LABELS[h.role]}
+                  </span>
+                )}
+              </td>
+
+              <td className={styles.num}>{n(h.count)}</td>
+
+              <td className={styles.num}>
+                {days(h.oldestDays)}
+              </td>
+            </tr>
+          ))
+        )}
+      </tbody>
+
+      <tfoot style={{ position: "static" }}>
+        <tr>
+          <th
+            scope="row"
+            style={{
+              position: "static",
+              textAlign: "left",
+              borderTop: "2px solid #64748b",
+              backgroundColor: "#1e293b",
+              color: "#ffffff",
+              fontWeight: 700,
+            }}
+          >
+            Grand total
+          </th>
+
+          <td
+            className={styles.num}
+            style={{
+              position: "static",
+              borderTop: "2px solid #64748b",
+              backgroundColor: "#1e293b",
+              color: "#ffffff",
+              fontWeight: 700,
+            }}
+          >
+            {n(
+              d.holders.reduce(
+                (total, holder) => total + holder.count,
+                0
+              )
             )}
-          </section>
+          </td>
+
+          <td
+            className={styles.num}
+            style={{
+              position: "static",
+              borderTop: "2px solid #64748b",
+              backgroundColor: "#1e293b",
+              color: "#ffffff",
+              fontWeight: 700,
+            }}
+          >
+            —
+          </td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+</section>
         </div>
 
         <p className={styles.muted}>
