@@ -12,87 +12,318 @@ import CorrectionPanel from "./CorrectionPanel";
 
 const PAGE_SIZE = 100;
 
-export default async function InventoryPage({ searchParams }: PageProps<"/inventory">) {
+/**
+ * Read card details saved inside attributes JSON.
+ * Invalid or empty JSON does not break the inventory page.
+ */
+function readCardDetails(raw: string) {
+  let attributes: Record<string, unknown> = {};
+
+  try {
+    const parsed: unknown = JSON.parse(raw || "{}");
+
+    if (
+      parsed !== null &&
+      typeof parsed === "object" &&
+      !Array.isArray(parsed)
+    ) {
+      attributes = parsed as Record<string, unknown>;
+    }
+  } catch {
+    // Missing or invalid details display as "Not set".
+  }
+
+  const rawCapacity = attributes.capacity;
+  const capacityText =
+    typeof rawCapacity === "string" ||
+    typeof rawCapacity === "number"
+      ? String(rawCapacity).trim()
+      : "";
+
+  const normalizedCapacity = capacityText
+    .replace(/\s+/g, "")
+    .toUpperCase();
+
+  let storage = capacityText || "Not set";
+
+  if (
+    normalizedCapacity === "512GB" ||
+    normalizedCapacity === "512"
+  ) {
+    storage = "512 GB";
+  } else if (
+    normalizedCapacity === "256GB" ||
+    normalizedCapacity === "256"
+  ) {
+    storage = "256 GB";
+  }
+
+  const rawCardType = attributes.card_type;
+  const cardTypeText =
+    typeof rawCardType === "string"
+      ? rawCardType.trim()
+      : "";
+
+  const normalizedCardType = cardTypeText.toLowerCase();
+
+  let cardType = cardTypeText || "Not set";
+
+  if (normalizedCardType === "black") {
+    cardType = "Black";
+  } else if (normalizedCardType === "green") {
+    cardType = "Green";
+  }
+
+  return { storage, cardType };
+}
+
+/**
+ * Format the existing price field in rupees.
+ * Supports plain values and common formatted sheet values.
+ * Missing/invalid amounts are not treated as zero.
+ */
+function displayAmount(raw: string): string {
+  const cleaned = String(raw ?? "")
+    .trim()
+    .replace(/₹/g, "")
+    .replace(/\bINR\b/gi, "")
+    .replace(/[,\s]/g, "");
+
+  if (!cleaned || !/^\d+(?:\.\d+)?$/.test(cleaned)) {
+    return "Not set";
+  }
+
+  const amount = Number(cleaned);
+
+  if (!Number.isFinite(amount)) {
+    return "Not set";
+  }
+
+  return amount.toLocaleString("en-IN", {
+    style: "currency",
+    currency: "INR",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+export default async function InventoryPage({
+  searchParams,
+}: PageProps<"/inventory">) {
   const user = await requireRole();
+
   const isAdmin = user.role === "admin";
   const canAdd = user.role === "admin" || user.role === "im";
+
   const sp = await searchParams;
+
   const q = one(sp.q).trim().toLowerCase();
-  const status = one(sp.status); // one status, or several separated by commas (from dashboard tiles)
+
+  // One status or comma-separated statuses from dashboard links.
+  const status = one(sp.status);
   const statuses = status.split(",").filter(Boolean);
-  const hub = one(sp.hub); // one hub, or several separated by commas (a hub and the hubs under it)
+
+  // One hub or comma-separated hub IDs.
+  const hub = one(sp.hub);
   const hubIds = hub.split(",").filter(Boolean);
+
   const holder = one(sp.holder);
-  const page = Math.max(1, Number(one(sp.page)) || 1);
+
+  // Validate pagination and clamp it after filtering.
+  const requestedPage = Number(one(sp.page));
+
+  const validPage =
+    Number.isSafeInteger(requestedPage) && requestedPage > 0
+      ? requestedPage
+      : 1;
 
   const store = getStore();
-  const [items, hubs, people] = await Promise.all([store.list("items"), store.list("hubs"), store.list("people")]);
-  const hubName = new Map(hubs.map((h) => [h.hub_id, h.name]));
-  const personName = new Map(people.map((p) => [p.person_id, p.name]));
+
+  const [items, hubs, people] = await Promise.all([
+    store.list("items"),
+    store.list("hubs"),
+    store.list("people"),
+  ]);
+
+  const hubName = new Map(
+    hubs.map((h) => [h.hub_id, h.name])
+  );
+
+  const personName = new Map(
+    people.map((p) => [p.person_id, p.name])
+  );
 
   const matches = items.filter(
-    (i) =>
-      (!statuses.length || statuses.includes(i.status)) &&
-      (!hubIds.length || hubIds.includes(i.current_hub)) &&
-      (!holder || i.current_holder === holder) &&
+    (item) =>
+      (!statuses.length || statuses.includes(item.status)) &&
+      (!hubIds.length || hubIds.includes(item.current_hub)) &&
+      (!holder || item.current_holder === holder) &&
       (!q ||
-        i.item_id.toLowerCase().includes(q) ||
-        i.prism_no.toLowerCase().includes(q) ||
-        i.brand.toLowerCase().includes(q) ||
-        i.model.toLowerCase().includes(q) ||
-        i.attributes.toLowerCase().includes(q)),
+        (item.item_id ?? "").toLowerCase().includes(q) ||
+        (item.prism_no ?? "").toLowerCase().includes(q) ||
+        (item.brand ?? "").toLowerCase().includes(q) ||
+        (item.model ?? "").toLowerCase().includes(q) ||
+        (item.attributes ?? "").toLowerCase().includes(q))
   );
-  const pages = Math.max(1, Math.ceil(matches.length / PAGE_SIZE));
-  const shown = matches.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
-  const sortedHubs = [...hubs].sort((a, b) => a.name.localeCompare(b.name));
-  const activeHubs = sortedHubs.filter((h) => h.active !== "false");
+
+  const pages = Math.max(
+    1,
+    Math.ceil(matches.length / PAGE_SIZE)
+  );
+
+  const page = Math.min(validPage, pages);
+
+  const shown = matches.slice(
+    (page - 1) * PAGE_SIZE,
+    page * PAGE_SIZE
+  );
+
+  const sortedHubs = [...hubs].sort((a, b) =>
+    a.name.localeCompare(b.name)
+  );
+
+  const activeHubs = sortedHubs.filter(
+    (h) => h.active !== "false"
+  );
 
   const pageLink = (p: number) => {
-    const params = new URLSearchParams({ ...(q && { q }), ...(status && { status }), ...(hub && { hub }), ...(holder && { holder }), page: String(p) });
+    const params = new URLSearchParams({
+      ...(q && { q }),
+      ...(status && { status }),
+      ...(hub && { hub }),
+      ...(holder && { holder }),
+      page: String(p),
+    });
+
     return `/inventory?${params}`;
   };
 
+  // 12 regular columns, plus optional Admin checkbox and Since.
+  const columnCount =
+    12 + (isAdmin ? 1 : 0) + (holder ? 1 : 0);
+
   const table = (
-    <table className={styles.table}>
-      <thead>
-        <tr>
-          {isAdmin && <th />}
-          <th>Serial</th>
-          <th>Prism no.</th>
-          <th>Brand</th>
-          <th>Model</th>
-          <th>Attributes</th>
-          <th>Status</th>
-          <th>Current hub</th>
-          <th>Holder</th>
-          {holder && <th>Since</th>}
-          <th>Home hub</th>
-        </tr>
-      </thead>
-      <tbody>
-        {shown.map((i) => (
-          <tr key={i.item_id}>
+    <div
+      role="region"
+      aria-label="Inventory table"
+      tabIndex={0}
+      style={{
+        width: "100%",
+        maxWidth: "100%",
+        overflowX: "auto",
+      }}
+    >
+      <table className={styles.table}>
+        <thead>
+          <tr>
             {isAdmin && (
-              <td>
-                <input type="checkbox" name="ids" value={i.item_id} aria-label={`Select ${i.item_id}`} />
-              </td>
+              <th scope="col" aria-label="Select items" />
             )}
-            <td>
-              <Link href={`/inventory/${i.item_id}`}>{i.item_id}</Link>
-            </td>
-            <td>{i.prism_no}</td>
-            <td>{i.brand}</td>
-            <td>{i.model}</td>
-            <td>{formatAttributes(i.attributes)}</td>
-            <td>{STATUS_LABELS[i.status] ?? i.status}</td>
-            <td>{hubName.get(i.current_hub) ?? i.current_hub}</td>
-            <td>{personName.get(i.current_holder) ?? i.current_holder}</td>
-            {holder && <td>{formatIst(i.updated_at)}</td>}
-            <td>{hubName.get(i.home_hub) ?? i.home_hub}</td>
+
+            <th scope="col">Serial</th>
+            <th scope="col">Prism no.</th>
+            <th scope="col">Brand</th>
+            <th scope="col">Model</th>
+
+            {/* NEW: dedicated card-detail columns. */}
+            <th scope="col">Storage</th>
+            <th scope="col">Card type</th>
+            <th scope="col">Price / Penalty</th>
+
+            <th scope="col">Attributes</th>
+            <th scope="col">Status</th>
+            <th scope="col">Current hub</th>
+            <th scope="col">Holder</th>
+
+            {holder && <th scope="col">Since</th>}
+
+            <th scope="col">Home hub</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+
+        <tbody>
+          {shown.length === 0 ? (
+            <tr>
+              <td
+                colSpan={columnCount}
+                className={styles.muted}
+              >
+                No items match the selected filters.
+              </td>
+            </tr>
+          ) : (
+            shown.map((item) => {
+              const { storage, cardType } = readCardDetails(
+                item.attributes
+              );
+
+              return (
+                <tr key={item.item_id}>
+                  {isAdmin && (
+                    <td>
+                      <input
+                        type="checkbox"
+                        name="ids"
+                        value={item.item_id}
+                        aria-label={`Select ${item.item_id}`}
+                      />
+                    </td>
+                  )}
+
+                  <td>
+                    <Link href={`/inventory/${item.item_id}`}>
+                      {item.item_id}
+                    </Link>
+                  </td>
+
+                  <td>{item.prism_no}</td>
+                  <td>{item.brand}</td>
+                  <td>{item.model}</td>
+
+                  {/* Reads attributes.capacity. */}
+                  <td style={{ whiteSpace: "nowrap" }}>
+                    {storage}
+                  </td>
+
+                  {/* Reads attributes.card_type. */}
+                  <td>{cardType}</td>
+
+                  {/* Reads price, not a separately assessed penalty. */}
+                  <td style={{ whiteSpace: "nowrap" }}>
+                    {displayAmount(item.price)}
+                  </td>
+
+                  {/* Preserve the existing attributes display. */}
+                  <td>{formatAttributes(item.attributes)}</td>
+
+                  <td>
+                    {STATUS_LABELS[item.status] ?? item.status}
+                  </td>
+
+                  <td>
+                    {hubName.get(item.current_hub) ??
+                      item.current_hub}
+                  </td>
+
+                  <td>
+                    {personName.get(item.current_holder) ??
+                      item.current_holder}
+                  </td>
+
+                  {holder && (
+                    <td>{formatIst(item.updated_at)}</td>
+                  )}
+
+                  <td>
+                    {hubName.get(item.home_hub) ?? item.home_hub}
+                  </td>
+                </tr>
+              );
+            })
+          )}
+        </tbody>
+      </table>
+    </div>
   );
 
   return (
@@ -100,47 +331,95 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
       <p className={styles.back}>
         <Link href="/">← Home</Link>
       </p>
+
       <div className={styles.pageHead}>
         <h1>Inventory</h1>
       </div>
+
       {one(sp.done) && (
         <p className={styles.ok}>
           Updated {one(sp.done)} item(s)
-          {Number(one(sp.same)) > 0 && `, ${one(sp.same)} already in that state`}.
+          {Number(one(sp.same)) > 0 &&
+            `, ${one(sp.same)} already in that state`}
+          .
         </p>
       )}
-      {one(sp.error) && <p className={styles.error}>{one(sp.error)}</p>}
 
+      {one(sp.error) && (
+        <p className={styles.error}>{one(sp.error)}</p>
+      )}
+
+      {/* Existing Add item form: visible to Admin and IM. */}
       {canAdd && (
-        <details className={styles.details} open={!!one(sp.added) || !!one(sp.addError) || undefined}>
+        <details
+          className={styles.details}
+          open={
+            !!one(sp.added) ||
+            !!one(sp.addError) ||
+            undefined
+          }
+        >
           <summary>+ Add an item</summary>
+
           <p className={styles.muted}>
-            For an item that isn&apos;t in the inventory yet. It starts in stock at the hub you choose, with
-            its own history from today.
+            For an item that isn&apos;t in the inventory yet.
+            It starts in stock at the hub you choose, with its
+            own history from today.
           </p>
+
           {one(sp.added) && (
             <p className={styles.ok}>
-              Added {one(sp.added)}. <Link href={`/inventory/${one(sp.added)}`}>View it</Link>, or add another below.
+              Added {one(sp.added)}.{" "}
+              <Link href={`/inventory/${one(sp.added)}`}>
+                View it
+              </Link>
+              , or add another below.
             </p>
           )}
-          {one(sp.addError) && <p className={styles.error}>{one(sp.addError)}</p>}
+
+          {one(sp.addError) && (
+            <p className={styles.error}>
+              {one(sp.addError)}
+            </p>
+          )}
+
           <AddCardForm hubs={activeHubs} />
         </details>
       )}
 
+      {/* Existing search and filters. */}
       <form className={styles.row} method="get">
-        <input name="q" defaultValue={one(sp.q)} placeholder="Search serial, prism no., brand or model" />
+        <input
+          name="q"
+          defaultValue={one(sp.q)}
+          placeholder="Search serial, prism no., brand, model or attributes"
+          aria-label="Search inventory"
+        />
+
         {statuses.length > 1 ? (
           <>
-            <input type="hidden" name="status" value={status} />
+            <input
+              type="hidden"
+              name="status"
+              value={status}
+            />
+
             <span className={styles.muted}>
-              Status: {statuses.map((s) => STATUS_LABELS[s as Status] ?? s).join(" or ")} ·{" "}
-              <Link href="/inventory">clear</Link>
+              Status:{" "}
+              {statuses
+                .map((s) => STATUS_LABELS[s as Status] ?? s)
+                .join(" or ")}{" "}
+              · <Link href="/inventory">clear</Link>
             </span>
           </>
         ) : (
-          <select name="status" defaultValue={status}>
+          <select
+            name="status"
+            defaultValue={status}
+            aria-label="Status"
+          >
             <option value="">All statuses</option>
+
             {STATUSES.map((s) => (
               <option key={s} value={s}>
                 {STATUS_LABELS[s]}
@@ -148,16 +427,31 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
             ))}
           </select>
         )}
+
         {hubIds.length > 1 ? (
           <>
-            <input type="hidden" name="hub" value={hub} />
+            <input
+              type="hidden"
+              name="hub"
+              value={hub}
+            />
+
             <span className={styles.muted}>
-              Hubs: {hubIds.map((id) => hubName.get(id) ?? id).join(", ")} · <Link href="/inventory">clear</Link>
+              Hubs:{" "}
+              {hubIds
+                .map((id) => hubName.get(id) ?? id)
+                .join(", ")}{" "}
+              · <Link href="/inventory">clear</Link>
             </span>
           </>
         ) : (
-          <select name="hub" defaultValue={hub}>
+          <select
+            name="hub"
+            defaultValue={hub}
+            aria-label="Hub"
+          >
             <option value="">All hubs</option>
+
             {sortedHubs.map((h) => (
               <option key={h.hub_id} value={h.hub_id}>
                 {h.name}
@@ -165,24 +459,57 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
             ))}
           </select>
         )}
-        {holder && <input type="hidden" name="holder" value={holder} />}
+
+        {holder && (
+          <input
+            type="hidden"
+            name="holder"
+            value={holder}
+          />
+        )}
+
         <button type="submit">Filter</button>
+
         {holder && (
           <span className={styles.muted}>
-            Holder: {people.find((p) => p.person_id === holder)?.name ?? holder} · <Link href="/inventory">clear</Link>
+            Holder:{" "}
+            {people.find((p) => p.person_id === holder)?.name ??
+              holder}{" "}
+            · <Link href="/inventory">clear</Link>
           </span>
         )}
       </form>
 
       <p className={styles.muted}>
-        {matches.length} of {items.length} items. Showing {shown.length ? (page - 1) * PAGE_SIZE + 1 : 0}–
+        {matches.length} of {items.length} items. Showing{" "}
+        {shown.length ? (page - 1) * PAGE_SIZE + 1 : 0}–
         {(page - 1) * PAGE_SIZE + shown.length}.
       </p>
 
+      <p className={styles.muted}>
+        Storage and card type come from saved item attributes.
+        Price / Penalty displays the stored price, not a separately
+        calculated penalty. Missing values show “Not set”.
+      </p>
+
+      {/* Preserve Admin bulk corrections and selection checkboxes. */}
       {isAdmin ? (
-        <form action={applyCorrection} className={styles.list}>
-          <input type="hidden" name="back" value="/inventory" />
-          <CorrectionPanel hubs={hubs} people={people} showScan />
+        <form
+          action={applyCorrection}
+          className={styles.list}
+        >
+          <input
+            type="hidden"
+            name="back"
+            value="/inventory"
+          />
+
+          <CorrectionPanel
+            hubs={hubs}
+            people={people}
+            showScan
+          />
+
           {table}
         </form>
       ) : (
@@ -190,11 +517,21 @@ export default async function InventoryPage({ searchParams }: PageProps<"/invent
       )}
 
       <div className={styles.row}>
-        {page > 1 && <Link href={pageLink(page - 1)}>← Previous</Link>}
+        {page > 1 && (
+          <Link href={pageLink(page - 1)}>
+            ← Previous
+          </Link>
+        )}
+
         <span className={styles.muted}>
           Page {page} of {pages}
         </span>
-        {page < pages && <Link href={pageLink(page + 1)}>Next →</Link>}
+
+        {page < pages && (
+          <Link href={pageLink(page + 1)}>
+            Next →
+          </Link>
+        )}
       </div>
     </main>
   );
