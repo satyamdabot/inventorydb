@@ -1,101 +1,134 @@
-"use server";
-
-import { randomUUID } from "node:crypto";
-import { redirect } from "next/navigation";
-import { requireRole } from "@/lib/authz";
 import { planAddItem } from "@/lib/add-item";
 import { findAsset } from "@/lib/asset-lookup";
 import { loadAssetRecords } from "@/lib/asset-sheet";
-import { planCorrection } from "@/lib/correction";
+import { requireRole } from "@/lib/authz";
 import { getStore } from "@/lib/store";
 import { istTimestamp } from "@/lib/time";
+import { randomUUID } from "crypto";
+import { redirect } from "next/navigation";
 
-// Only ever redirect back into the inventory screens.
-const SAFE_BACK = /^\/inventory(\/[A-Za-z0-9_-]+)?$/;
-
-function backTo(path: string, params: Record<string, string>) {
-  return `${path}?${new URLSearchParams(params)}`;
-}
-
-/** Admin correction of status / hub / holder / home hub for one or many cards. */
-export async function applyCorrection(formData: FormData) {
-  const user = await requireRole("admin");
-  const backRaw = String(formData.get("back") ?? "");
-  const back = SAFE_BACK.test(backRaw) ? backRaw : "/inventory";
-
-  // Ticked rows plus serials typed, pasted or scanned (one per line).
-  const scanned = String(formData.get("scanned") ?? "").split(/[\s,]+/);
-  const ids = [...new Set([...formData.getAll("ids").map(String), ...scanned].map((s) => s.trim()).filter(Boolean))];
-  if (!ids.length) redirect(backTo(back, { error: "Tick or scan at least one item." }));
-
-  const store = getStore();
-  const [found, hubs, people] = await Promise.all([
-    store.getItemsByIds(ids),
-    store.list("hubs"),
-    store.list("people"),
-  ]);
-  const missing = ids.filter((id) => !found.has(id));
-  if (missing.length) {
-    const shown = missing.slice(0, 5).join(", ");
-    redirect(backTo(back, { error: `Not found: ${shown}${missing.length > 5 ? ` and ${missing.length - 5} more` : ""}. Nothing was saved.` }));
-  }
-
-  // Two spellings of the same card (SD-1 and sd-1) count once, and the stored serial is what gets used.
-  const targets = [...new Map(ids.map((id) => [found.get(id)!.item_id, found.get(id)!])).values()];
-
-  const plan = planCorrection(
-    targets,
-    {
-      status: String(formData.get("status") ?? ""),
-      hub: String(formData.get("hub") ?? ""),
-      holder: String(formData.get("holder") ?? ""),
-      homeHub: String(formData.get("homeHub") ?? ""),
-      note: String(formData.get("note") ?? ""),
-    },
-    {
-      hubs,
-      people,
-      by: user.email ?? "unknown",
-      now: istTimestamp(),
-      newId: (prefix) => `${prefix}-${randomUUID().slice(0, 8)}`,
-    },
-  );
-  if (plan.errors.length) redirect(backTo(back, { error: `${plan.errors.join(" ")} Nothing was saved.` }));
-
-  if (plan.items.length) await store.commitBatch(plan.events, plan.items);
-  redirect(backTo(back, { done: String(plan.items.length), same: String(plan.unchanged.length) }));
-}
-
-/** Register a brand-new card, in stock at the chosen hub. Admin or IM. */
+/** Register a new card and save its extra details in attributes JSON. */
 export async function addItem(formData: FormData) {
   const user = await requireRole("admin", "im");
+
+  const capacity = String(formData.get("capacity") ?? "").trim();
+  const cardType = String(formData.get("cardType") ?? "").trim();
+  const rawPrice = String(formData.get("price") ?? "").trim();
+
+  function reject(message: string): never {
+    redirect(
+      `/inventory?${new URLSearchParams({ addError: message })}`
+    );
+  }
+
+  if (capacity && !["256 GB", "512 GB"].includes(capacity)) {
+    reject("Capacity must be 256 GB or 512 GB.");
+  }
+
+  if (cardType && !["Black", "Green"].includes(cardType)) {
+    reject("Card type must be Black or Green.");
+  }
+
+  if (
+    rawPrice &&
+    (!/^\d+(?:\.\d{1,2})?$/.test(rawPrice) ||
+      !Number.isFinite(Number(rawPrice)))
+  ) {
+    reject("Enter a valid non-negative price with up to two decimal places.");
+  }
+
   const input = {
     itemId: String(formData.get("itemId") ?? ""),
     homeHub: String(formData.get("homeHub") ?? ""),
     prismNo: String(formData.get("prismNo") ?? ""),
     brand: String(formData.get("brand") ?? ""),
     model: String(formData.get("model") ?? ""),
-    price: String(formData.get("price") ?? ""),
+    price: rawPrice,
   };
 
   const store = getStore();
-  const [items, hubs] = await Promise.all([store.list("items"), store.list("hubs")]);
+
+  const [items, hubs] = await Promise.all([
+    store.list("items"),
+    store.list("hubs"),
+  ]);
+
   const plan = planAddItem(input, items, {
     hubs,
     by: user.email ?? "unknown",
     now: istTimestamp(),
     newId: (prefix) => `${prefix}-${randomUUID().slice(0, 8)}`,
   });
-  if (plan.errors.length) redirect(`/inventory?${new URLSearchParams({ addError: plan.errors.join(" ") })}`);
 
-  await store.commitBatch([plan.event!], [plan.item!]);
-  redirect(`/inventory?${new URLSearchParams({ added: plan.item!.item_id })}`);
+  if (plan.errors.length) {
+    reject(plan.errors.join(" "));
+  }
+
+  if (!plan.item || !plan.event) {
+    reject("The item could not be prepared. Nothing was saved.");
+  }
+
+  const item = plan.item!;
+  const event = plan.event!;
+
+  // Preserve attributes already generated by planAddItem.
+  let attributes: Record<string, unknown> = {};
+
+  if (item.attributes?.trim()) {
+    try {
+      const parsed: unknown = JSON.parse(item.attributes);
+
+      if (
+        parsed === null ||
+        typeof parsed !== "object" ||
+        Array.isArray(parsed)
+      ) {
+        reject("Invalid item attributes. Nothing was saved.");
+      }
+
+      attributes = parsed as Record<string, unknown>;
+    } catch {
+      reject("Could not read item attributes. Nothing was saved.");
+    }
+  }
+
+  const itemToSave = {
+    ...item,
+
+    // Ensure the submitted amount reaches the existing price column.
+    price: rawPrice,
+
+    attributes: JSON.stringify({
+      ...attributes,
+      capacity,
+      card_type: cardType,
+    }),
+  };
+
+  await store.commitBatch([event], [itemToSave]);
+
+  redirect(
+    `/inventory?${new URLSearchParams({
+      added: itemToSave.item_id,
+    })}`
+  );
 }
 
-/** Look up brand, model, prism no. and price for a serial from the customer's asset sheet, to auto-fill Add a card. */
+/** Auto-fill a card using its Asset Tag. */
 export async function lookupAsset(serial: string) {
   await requireRole("admin", "im");
+
   const records = await loadAssetRecords();
   const found = findAsset(records, serial);
-  return found ? { brand: found.brand, model: found.model, prismNo: found.prismNo, price: found.price } : null;
+
+  return found
+    ? {
+        brand: found.brand,
+        model: found.model,
+        prismNo: found.prismNo,
+        price: found.price,
+        capacity: found.capacity ?? "",
+        cardType: found.cardType ?? "",
+      }
+    : null;
 }
