@@ -240,11 +240,7 @@ export default async function ReceiptPage({
           law. The listed amounts are not an automatic charge.
         </p>
 
-        <p className={styles.muted}>
-          Scan the QR code above when receiving this batch to
-          load every item here in one go, instead of scanning
-          each one again.
-        </p>
+       
       </div>
 
       <div className={styles.noPrint}>
