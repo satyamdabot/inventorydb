@@ -17,10 +17,7 @@ const ACTION_TITLE: Record<string, string> = {
   correct: "Correction record",
 };
 
-/**
- * Get the current site's scheme and host.
- * The QR code uses this URL to point back to this receipt.
- */
+// Build the receipt URL used by the QR code.
 async function baseUrl() {
   const h = await headers();
 
@@ -56,16 +53,16 @@ export default async function ReceiptPage({
     notFound();
   }
 
-  // QR CODE GENERATION:
-  // Encode this batch's receipt URL as a QR-code image.
-  const url = `${await baseUrl()}/handover/receipt/${summary.batchId}`;
+  // QR CODE GENERATION: encode this batch's receipt URL.
+  const url =
+    `${await baseUrl()}/handover/receipt/` +
+    encodeURIComponent(summary.batchId);
 
   const qr = await qrToDataURL(url, {
     margin: 1,
     width: 220,
   });
 
-  // Missing or invalid prices should display "Not set", not zero.
   const missingPriceCount = summary.items.filter(
     (item) => formatPrice(item.price) === ""
   ).length;
@@ -77,8 +74,33 @@ export default async function ReceiptPage({
       </p>
 
       <div className={styles.receipt}>
-        <div className={styles.receiptHead}>
-          <div>
+        <div
+          className={styles.receiptHead}
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            flexWrap: "wrap",
+            gap: 20,
+          }}
+        >
+          <div style={{ minWidth: 0 }}>
+            {/* LOGO: save the official image at public/instawork-logo.png. */}
+            {/* eslint-disable-next-line @next/next/no-img-element -- local receipt logo */}
+            <img
+              src="/instawork-logo.png"
+              alt="Instawork"
+              width={180}
+              height={48}
+              style={{
+                display: "block",
+                width: 180,
+                maxWidth: "100%",
+                height: "auto",
+                marginBottom: 16,
+              }}
+            />
+
             <h1>
               {ACTION_TITLE[summary.action] ?? "Batch record"}
             </h1>
@@ -89,10 +111,7 @@ export default async function ReceiptPage({
             </p>
           </div>
 
-          {/* QR CODE DISPLAY:
-              This image contains the receipt URL for this batch.
-              Scan it on the Receive items page to identify the batch. */}
-
+          {/* QR CODE DISPLAY: scan when receiving this batch. */}
           {/* eslint-disable-next-line @next/next/no-img-element -- generated QR data URI */}
           <img
             src={qr}
@@ -100,6 +119,7 @@ export default async function ReceiptPage({
             width={140}
             height={140}
             className={styles.qr}
+            style={{ flexShrink: 0 }}
           />
         </div>
 
@@ -143,11 +163,10 @@ export default async function ReceiptPage({
               <tr key={item.itemId}>
                 <td>{index + 1}</td>
                 <td>{item.itemId}</td>
-                <td>{item.brand}</td>
-                <td>{item.model}</td>
+                <td>{item.brand || "—"}</td>
+                <td>{item.model || "—"}</td>
 
-                {/* Uses the stored item price, not a separate
-                    calculated or assigned penalty. */}
+                {/* The configured amount is stored in items.price. */}
                 <td>
                   {formatPrice(item.price) || "Not set"}
                 </td>
@@ -169,8 +188,8 @@ export default async function ReceiptPage({
               >
                 {missingPriceCount > 0 &&
                 summary.totalPrice !== null
-                  ? "Known stored prices subtotal"
-                  : "Total stored price"}
+                  ? "Known penalty amounts subtotal"
+                  : "Total listed penalty amount"}
               </th>
 
               <td>
@@ -190,21 +209,41 @@ export default async function ReceiptPage({
           <p className={styles.muted}>
             {missingPriceCount} item
             {missingPriceCount === 1 ? " has" : "s have"} no valid
-            stored price. Missing amounts are not included in the
-            total. Save prices as plain numbers, such as 7500,
-            without a currency symbol or commas.
+            stored amount. Missing amounts are excluded from the
+            total and must be verified.
           </p>
         )}
 
-        <p className={styles.muted}>
-          The Penalty column currently shows stored item prices,
-          not a separately assessed penalty.
+        {/* Use this notice only if approved by company policy.
+            This receipt does not itself authorize a deduction. */}
+        <p
+          style={{
+            marginTop: 16,
+            padding: "12px 14px",
+            border: "1px solid #b91c1c",
+            borderLeft: "4px solid #b91c1c",
+            borderRadius: 6,
+            backgroundColor: "#fff7f7",
+            color: "#991b1b",
+            fontSize: 14,
+            lineHeight: 1.6,
+            fontWeight: 600,
+          }}
+        >
+          <strong>IMPORTANT — ITEM RESPONSIBILITY:</strong>{" "}
+          You are responsible for the safekeeping and timely
+          return of the items listed on this receipt. Any loss
+          or damage must be reported immediately. If you are
+          found responsible following review, the applicable
+          penalty may be deducted from your salary, subject to
+          company policy, any required consent, and applicable
+          law. The listed amounts are not an automatic charge.
         </p>
 
         <p className={styles.muted}>
-          Scan the QR code above when receiving this batch to load
-          every item here in one go, instead of scanning each one
-          again.
+          Scan the QR code above when receiving this batch to
+          load every item here in one go, instead of scanning
+          each one again.
         </p>
       </div>
 
