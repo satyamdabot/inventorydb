@@ -1,13 +1,29 @@
 import type { Row, TabName } from "../schema";
 
-// Minimal table operations. Google Sheets and the in-memory store implement this;
-// a Postgres backend would implement the same four methods.
+export interface DeleteItemResult {
+  deletedItems: number;
+  deletedEvents: number;
+}
+
+// Operations implemented by each storage backend.
 export interface TableBackend {
   /** Create missing tabs and write/extend header rows. */
   ensureTabs(): Promise<void>;
+
+  /** Read all records in a tab. */
   readAll(tab: TabName): Promise<Row[]>;
-  /** Append rows to the end of a tab. */
+
+  /** Append records to the end of a tab. */
   append(tab: TabName, rows: Row[]): Promise<void>;
-  /** Update rows whose key (first column) exists, append the rest. */
+
+  /** Update existing records and append new records. */
   upsert(tab: TabName, rows: Row[]): Promise<void>;
+
+  /**
+   * Permanently remove one item and its associated events.
+   * Optional because not every backend implements deletion.
+   */
+  deleteItemAndHistory?(
+    itemId: string
+  ): Promise<DeleteItemResult>;
 }
