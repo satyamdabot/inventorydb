@@ -1,6 +1,11 @@
 "use client";
 
-import { useRef, useState, type CSSProperties } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
 import { useFormStatus } from "react-dom";
 import styles from "../admin/admin.module.css";
 import { addItem, lookupAsset } from "./actions";
@@ -24,11 +29,11 @@ const inputStyle: CSSProperties = {
   padding: "10px 12px",
 };
 
-function AddButton({ lookingUp }: { lookingUp: boolean }) {
+function AddButton({ lookupBusy }: { lookupBusy: boolean }) {
   const { pending } = useFormStatus();
 
   return (
-    <button type="submit" disabled={lookingUp || pending}>
+    <button type="submit" disabled={lookupBusy || pending}>
       {pending ? "Saving…" : "Add item"}
     </button>
   );
@@ -43,11 +48,34 @@ export default function AddCardForm({ hubs }: { hubs: Hubs }) {
   const [capacity, setCapacity] = useState("");
   const [cardType, setCardType] = useState("");
   const [note, setNote] = useState("");
-  const [lookingUp, setLookingUp] = useState(false);
 
+  const [lookingUp, setLookingUp] = useState(false);
+  const [waitingToLookup, setWaitingToLookup] = useState(false);
+
+  // Track the latest request so older responses cannot overwrite it.
   const requestId = useRef(0);
   const lastSuccessfulSerial = useRef("");
   const activeLookupSerial = useRef("");
+
+  // Timer used to wait until typing/scanning pauses.
+  const lookupTimer = useRef<
+    ReturnType<typeof setTimeout> | null
+  >(null);
+
+  const lookupBusy = lookingUp || waitingToLookup;
+
+  // Cancel queued work and invalidate requests when the form unmounts.
+  useEffect(() => {
+    return () => {
+      if (lookupTimer.current !== null) {
+        clearTimeout(lookupTimer.current);
+        lookupTimer.current = null;
+      }
+
+      requestId.current += 1;
+      activeLookupSerial.current = "";
+    };
+  }, []);
 
   function clearDetails() {
     setPrismNo("");
@@ -58,19 +86,47 @@ export default function AddCardForm({ hubs }: { hubs: Hubs }) {
     setCardType("");
   }
 
+  function cancelScheduledLookup() {
+    if (lookupTimer.current !== null) {
+      clearTimeout(lookupTimer.current);
+      lookupTimer.current = null;
+    }
+
+    setWaitingToLookup(false);
+  }
+
   function changeSerial(value: string) {
-    // Prevent an old lookup response from filling a different card.
+    cancelScheduledLookup();
+
+    // Ignore any response still loading for the previous serial.
     requestId.current += 1;
     lastSuccessfulSerial.current = "";
     activeLookupSerial.current = "";
 
     setSerial(value);
     setLookingUp(false);
-    setNote("");
     clearDetails();
+
+    const trimmed = value.trim();
+
+    if (!trimmed) {
+      setNote("");
+      return;
+    }
+
+    setWaitingToLookup(true);
+    setNote("");
+
+    // Automatically fetch 600ms after typing stops.
+    lookupTimer.current = setTimeout(() => {
+      lookupTimer.current = null;
+      void lookup(trimmed);
+    }, 600);
   }
 
   async function lookup(value: string, force = false) {
+    cancelScheduledLookup();
+
     const trimmed = value.trim();
 
     if (!trimmed) {
@@ -80,11 +136,11 @@ export default function AddCardForm({ hubs }: { hubs: Hubs }) {
 
     const normalized = trimmed.toLowerCase();
 
-    // Avoid duplicate requests for the same serial.
+    // Avoid duplicate requests for the same card.
     if (activeLookupSerial.current === normalized) return;
 
-    // Automatic lookup should not overwrite manually edited fields.
-    // The Fetch details button can explicitly fetch them again.
+    // Preserve manual edits after a successful automatic lookup.
+    // The Fetch details button explicitly allows fetching again.
     if (
       !force &&
       lastSuccessfulSerial.current === normalized
@@ -108,11 +164,12 @@ export default function AddCardForm({ hubs }: { hubs: Hubs }) {
         clearDetails();
 
         setNote(
-          "No matching Asset Tag was found. You can enter the details manually."
+          "No matching Asset Tag was found. Enter the card details manually."
         );
         return;
       }
 
+      // Fill every field returned by the reference-sheet lookup.
       setPrismNo(found.prismNo ?? "");
       setBrand(found.brand ?? "");
       setModel(found.model ?? "");
@@ -124,16 +181,19 @@ export default function AddCardForm({ hubs }: { hubs: Hubs }) {
 
       const missing: string[] = [];
 
+      if (!found.prismNo) missing.push("Prism number");
+      if (!found.brand) missing.push("brand");
+      if (!found.model) missing.push("model");
       if (!found.capacity) missing.push("storage");
-      if (!found.cardType) missing.push("card type");
+      if (!found.cardType) missing.push("card colour");
       if (!found.price) missing.push("price");
 
       setNote(
         missing.length
-          ? `Asset found. Missing in lookup: ${missing.join(
+          ? `Asset found. Missing details: ${missing.join(
               ", "
-            )}. Select or enter these fields manually.`
-          : "Asset found. Storage, card type and price loaded."
+            )}. You can enter them manually.`
+          : "All card details loaded. Select the home hub and click Add item."
       );
     } catch {
       if (currentRequest !== requestId.current) return;
@@ -142,7 +202,7 @@ export default function AddCardForm({ hubs }: { hubs: Hubs }) {
       clearDetails();
 
       setNote(
-        "Could not load the asset sheet. Check its connection or enter the details manually."
+        "Could not load the asset sheet. Retry with Fetch details or enter the details manually."
       );
     } finally {
       if (currentRequest === requestId.current) {
@@ -157,8 +217,13 @@ export default function AddCardForm({ hubs }: { hubs: Hubs }) {
       action={addItem}
       aria-label="Add inventory item"
       onSubmit={(event) => {
-        // Also block keyboard submission during a lookup.
-        if (activeLookupSerial.current) {
+        // Do not save incomplete details while a lookup is queued
+        // or running, including submissions triggered by a keyboard.
+        if (
+          lookupTimer.current !== null ||
+          activeLookupSerial.current ||
+          lookupBusy
+        ) {
           event.preventDefault();
         }
       }}
@@ -183,28 +248,32 @@ export default function AddCardForm({ hubs }: { hubs: Hubs }) {
 
           <input
             name="itemId"
-            placeholder="Scan or type Asset Tag"
+            placeholder="Scan or type — details load automatically"
             value={serial}
             onChange={(event) =>
               changeSerial(event.target.value)
             }
             onBlur={(event) => {
+              // Leaving the field fetches immediately.
               if (event.currentTarget.value.trim()) {
                 void lookup(event.currentTarget.value);
               }
             }}
             onKeyDown={(event) => {
+              // Scanners commonly send Enter after the Asset Tag.
               if (event.key === "Enter") {
                 event.preventDefault();
                 void lookup(event.currentTarget.value);
               }
             }}
             autoComplete="off"
+            spellCheck={false}
             required
             style={inputStyle}
           />
         </label>
 
+        {/* Home hub is selected manually, not returned by lookup. */}
         <label style={fieldStyle}>
           <span>Home hub *</span>
 
@@ -236,7 +305,7 @@ export default function AddCardForm({ hubs }: { hubs: Hubs }) {
             onChange={(event) =>
               setPrismNo(event.target.value)
             }
-            readOnly={lookingUp}
+            readOnly={lookupBusy}
             style={inputStyle}
           />
         </label>
@@ -251,7 +320,7 @@ export default function AddCardForm({ hubs }: { hubs: Hubs }) {
             onChange={(event) =>
               setBrand(event.target.value)
             }
-            readOnly={lookingUp}
+            readOnly={lookupBusy}
             style={inputStyle}
           />
         </label>
@@ -266,12 +335,11 @@ export default function AddCardForm({ hubs }: { hubs: Hubs }) {
             onChange={(event) =>
               setModel(event.target.value)
             }
-            readOnly={lookingUp}
+            readOnly={lookupBusy}
             style={inputStyle}
           />
         </label>
 
-        {/* STORAGE OF CARD */}
         <label style={fieldStyle}>
           <span>Storage of card</span>
 
@@ -281,7 +349,7 @@ export default function AddCardForm({ hubs }: { hubs: Hubs }) {
             onChange={(event) =>
               setCapacity(event.target.value)
             }
-            disabled={lookingUp}
+            disabled={lookupBusy}
             style={inputStyle}
           >
             <option value="">Select storage</option>
@@ -290,7 +358,6 @@ export default function AddCardForm({ hubs }: { hubs: Hubs }) {
           </select>
         </label>
 
-        {/* TYPE / COLOUR OF CARD */}
         <label style={fieldStyle}>
           <span>Type of card / colour</span>
 
@@ -300,7 +367,7 @@ export default function AddCardForm({ hubs }: { hubs: Hubs }) {
             onChange={(event) =>
               setCardType(event.target.value)
             }
-            disabled={lookingUp}
+            disabled={lookupBusy}
             style={inputStyle}
           >
             <option value="">Select card type</option>
@@ -309,7 +376,6 @@ export default function AddCardForm({ hubs }: { hubs: Hubs }) {
           </select>
         </label>
 
-        {/* PRICE */}
         <label style={fieldStyle}>
           <span>Price / source penalty (₹)</span>
 
@@ -324,7 +390,7 @@ export default function AddCardForm({ hubs }: { hubs: Hubs }) {
             onChange={(event) =>
               setPrice(event.target.value)
             }
-            readOnly={lookingUp}
+            readOnly={lookupBusy}
             style={inputStyle}
           />
         </label>
@@ -338,6 +404,7 @@ export default function AddCardForm({ hubs }: { hubs: Hubs }) {
           alignItems: "center",
         }}
       >
+        {/* Optional manual retry; automatic lookup works without it. */}
         <button
           type="button"
           disabled={lookingUp || !serial.trim()}
@@ -348,7 +415,7 @@ export default function AddCardForm({ hubs }: { hubs: Hubs }) {
           {lookingUp ? "Fetching…" : "Fetch details"}
         </button>
 
-        <AddButton lookingUp={lookingUp} />
+        <AddButton lookupBusy={lookupBusy} />
       </div>
 
       <p
@@ -359,8 +426,10 @@ export default function AddCardForm({ hubs }: { hubs: Hubs }) {
       >
         {lookingUp
           ? "Looking up card details…"
-          : note ||
-            "Scan an Asset Tag or click Fetch details. You can edit the returned details before saving."}
+          : waitingToLookup
+            ? "Waiting for typing or scanning to finish…"
+            : note ||
+              "Enter an Asset Tag. Card details will load automatically; review them before saving."}
       </p>
     </form>
   );
