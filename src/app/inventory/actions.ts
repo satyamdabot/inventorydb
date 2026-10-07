@@ -4,14 +4,17 @@ import { randomUUID } from "node:crypto";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { planAddItem } from "@/lib/add-item";
-import { findAsset } from "@/lib/asset-lookup";
+import {
+  findAsset,
+  normalizeCapacity,
+} from "@/lib/asset-lookup";
 import { loadAssetRecords } from "@/lib/asset-sheet";
 import { requireRole } from "@/lib/authz";
 import { planCorrection } from "@/lib/correction";
 import { getStore } from "@/lib/store";
 import { istTimestamp } from "@/lib/time";
 
-// Only allow redirects back to inventory pages.
+// Only redirect to inventory pages.
 const SAFE_BACK = /^\/inventory(\/[A-Za-z0-9_-]+)?$/;
 
 function backTo(
@@ -21,20 +24,25 @@ function backTo(
   return `${path}?${new URLSearchParams(params)}`;
 }
 
-// Refresh pages that display inventory data.
+// Fixed penalty based on storage.
+function penaltyForCapacity(capacity: string): string {
+  if (capacity === "256 GB") return "10000";
+  if (capacity === "512 GB") return "20000";
+  return "";
+}
+
 function refreshInventoryPages() {
   revalidatePath("/inventory");
   revalidatePath("/inventory/[id]", "page");
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/analytics");
+  revalidatePath("/dashboard/my");
   revalidatePath("/dashboard/hub/[id]", "page");
 }
 
 /**
- * ADMIN CORRECTION
- *
- * Correct status, current hub, holder or home hub.
- * Supports selected checkboxes and scanned item IDs.
+ * CORRECTIONS: Admin only.
+ * Rig and IM do not gain correction permission.
  */
 export async function applyCorrection(formData: FormData) {
   const user = await requireRole("admin");
@@ -44,16 +52,12 @@ export async function applyCorrection(formData: FormData) {
     ? backRaw
     : "/inventory";
 
-  // Combine checkbox selections with scanned or pasted IDs.
   const scanned = String(formData.get("scanned") ?? "")
     .split(/[\s,]+/);
 
   const ids = [
     ...new Set(
-      [
-        ...formData.getAll("ids").map(String),
-        ...scanned,
-      ]
+      [...formData.getAll("ids").map(String), ...scanned]
         .map((id) => id.trim())
         .filter(Boolean)
     ),
@@ -75,7 +79,6 @@ export async function applyCorrection(formData: FormData) {
     store.list("people"),
   ]);
 
-  // Do not partially save when some requested items are missing.
   const missing = ids.filter((id) => !found.has(id));
 
   if (missing.length) {
@@ -92,7 +95,7 @@ export async function applyCorrection(formData: FormData) {
     );
   }
 
-  // Different spellings of the same serial count as one item.
+  // Deduplicate different spellings of the same stored serial.
   const targets = [
     ...new Map(
       ids.map((id) => [
@@ -143,25 +146,19 @@ export async function applyCorrection(formData: FormData) {
 }
 
 /**
- * ADD ITEM
- *
- * Register a new card in stock at the selected home hub.
- * Save price in the existing price column.
- * Save capacity and card colour inside attributes JSON.
+ * ADD ITEM: Admin, IM and Rig.
+ * Store capacity/colour in attributes and penalty in price.
  */
 export async function addItem(formData: FormData) {
-  const user = await requireRole("admin", "im");
+  // CHANGED: Rig can now save new items.
+  const user = await requireRole("admin", "im", "rig");
 
-  const capacity = String(
-    formData.get("capacity") ?? ""
-  ).trim();
+  const capacity = normalizeCapacity(
+    String(formData.get("capacity") ?? "")
+  );
 
   const cardType = String(
     formData.get("cardType") ?? ""
-  ).trim();
-
-  const rawPrice = String(
-    formData.get("price") ?? ""
   ).trim();
 
   function reject(message: string): never {
@@ -172,15 +169,12 @@ export async function addItem(formData: FormData) {
     );
   }
 
-  // Validate supported storage values when supplied.
-  if (
-    capacity &&
-    !["256 GB", "512 GB"].includes(capacity)
-  ) {
-    reject("Capacity must be 256 GB or 512 GB.");
+  if (!["256 GB", "512 GB"].includes(capacity)) {
+    reject(
+      "Select 256 GB or 512 GB to calculate the penalty."
+    );
   }
 
-  // Validate supported card colours when supplied.
   if (
     cardType &&
     !["Black", "Green"].includes(cardType)
@@ -188,17 +182,8 @@ export async function addItem(formData: FormData) {
     reject("Card type must be Black or Green.");
   }
 
-  // Blank price remains allowed.
-  // Nonblank prices must be non-negative numeric values.
-  if (
-    rawPrice &&
-    (!/^\d+(?:\.\d{1,2})?$/.test(rawPrice) ||
-      !Number.isFinite(Number(rawPrice)))
-  ) {
-    reject(
-      "Enter a valid non-negative price with up to two decimal places."
-    );
-  }
+  // Calculate on the server; ignore any submitted price.
+  const price = penaltyForCapacity(capacity);
 
   const input = {
     itemId: String(formData.get("itemId") ?? "").trim(),
@@ -206,7 +191,7 @@ export async function addItem(formData: FormData) {
     prismNo: String(formData.get("prismNo") ?? "").trim(),
     brand: String(formData.get("brand") ?? "").trim(),
     model: String(formData.get("model") ?? "").trim(),
-    price: rawPrice,
+    price,
   };
 
   const store = getStore();
@@ -216,7 +201,7 @@ export async function addItem(formData: FormData) {
     store.list("hubs"),
   ]);
 
-  // Keep the existing item validation and creation logic.
+  // Preserve existing validation and item-creation logic.
   const plan = planAddItem(input, items, {
     hubs,
     by: user.email ?? "unknown",
@@ -238,14 +223,11 @@ export async function addItem(formData: FormData) {
   const item = plan.item!;
   const event = plan.event!;
 
-  // Preserve any attributes generated by planAddItem.
   let attributes: Record<string, unknown> = {};
 
   if (item.attributes?.trim()) {
     let parsed: unknown;
 
-    // Catch JSON parsing errors only.
-    // Keep redirect() outside this try/catch.
     try {
       parsed = JSON.parse(item.attributes);
     } catch {
@@ -269,11 +251,7 @@ export async function addItem(formData: FormData) {
 
   const itemToSave = {
     ...item,
-
-    // Receipt and inventory amount columns read this value.
-    price: rawPrice,
-
-    // Fleet and inventory breakdowns read these JSON keys.
+    price,
     attributes: JSON.stringify({
       ...attributes,
       capacity,
@@ -282,7 +260,6 @@ export async function addItem(formData: FormData) {
   };
 
   await store.commitBatch([event], [itemToSave]);
-
   refreshInventoryPages();
 
   redirect(
@@ -293,31 +270,30 @@ export async function addItem(formData: FormData) {
 }
 
 /**
- * ASSET LOOKUP
- *
- * Auto-fill Add item using a matching Asset Tag
- * from the configured reference asset sheet.
+ * ASSET LOOKUP: Admin, IM and Rig.
  */
 export async function lookupAsset(serial: string) {
-  await requireRole("admin", "im");
+  // CHANGED: Rig can now auto-fetch card details.
+  await requireRole("admin", "im", "rig");
 
   const cleanedSerial = serial.trim();
-
-  if (!cleanedSerial) {
-    return null;
-  }
+  if (!cleanedSerial) return null;
 
   const records = await loadAssetRecords();
   const found = findAsset(records, cleanedSerial);
 
-  return found
-    ? {
-        brand: found.brand,
-        model: found.model,
-        prismNo: found.prismNo,
-        price: found.price,
-        capacity: found.capacity ?? "",
-        cardType: found.cardType ?? "",
-      }
-    : null;
+  if (!found) return null;
+
+  const capacity = normalizeCapacity(
+    found.capacity ?? ""
+  );
+
+  return {
+    brand: found.brand,
+    model: found.model,
+    prismNo: found.prismNo,
+    capacity,
+    cardType: found.cardType ?? "",
+    price: penaltyForCapacity(capacity),
+  };
 }

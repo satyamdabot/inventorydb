@@ -1,285 +1,531 @@
-import { headers } from "next/headers";
 import Link from "next/link";
-import { notFound } from "next/navigation";
-import { toDataURL as qrToDataURL } from "qrcode";
+import { formatAttributes } from "@/lib/attributes";
 import { requireRole } from "@/lib/authz";
-import { STATUS_LABELS } from "@/lib/labels";
-import { formatPrice, summarizeBatch } from "@/lib/receipt";
+import { STATUS_LABELS, one } from "@/lib/labels";
+import { STATUSES, type Status } from "@/lib/schema";
 import { getStore } from "@/lib/store";
 import { formatIst } from "@/lib/time";
-import styles from "../../form.module.css";
-import PrintButton from "../handover/receipt/[batch]/PrintButton";
+import styles from "../admin/admin.module.css";
+import AddCardForm from "./AddCardForm";
+import { applyCorrection } from "./actions";
+import CorrectionPanel from "./CorrectionPanel";
 
-const ACTION_TITLE: Record<string, string> = {
-  check_out: "Handover receipt",
-  receive: "Receipt confirmation",
-  correct: "Correction record",
-};
+const PAGE_SIZE = 100;
 
-/**
- * Build the current site's base URL.
- * Used only to generate the receipt QR code.
- */
-async function baseUrl() {
-  const h = await headers();
+/** Read saved storage and colour without failing on invalid JSON. */
+function readCardDetails(raw: string) {
+  let attributes: Record<string, unknown> = {};
 
-  const host =
-    h.get("x-forwarded-host") ??
-    h.get("host") ??
-    "localhost:3000";
+  try {
+    const parsed: unknown = JSON.parse(raw || "{}");
 
-  const proto =
-    h.get("x-forwarded-proto") ??
-    (host.startsWith("localhost") ? "http" : "https");
-
-  return `${proto}://${host}`;
-}
-
-export default async function ReceiptPage({
-  params,
-}: PageProps<"/handover/receipt/[batch]">) {
-  await requireRole("admin", "im", "rig");
-
-  const { batch } = await params;
-  const store = getStore();
-
-  const [events, items, hubs] = await Promise.all([
-    store.list("events"),
-    store.list("items"),
-    store.list("hubs"),
-  ]);
-
-  const summary = summarizeBatch(
-    events,
-    items,
-    hubs,
-    batch
-  );
-
-  if (!summary) {
-    notFound();
+    if (
+      parsed !== null &&
+      typeof parsed === "object" &&
+      !Array.isArray(parsed)
+    ) {
+      attributes = parsed as Record<string, unknown>;
+    }
+  } catch {
+    // Missing or invalid details display as "Not set".
   }
 
-  // QR CODE GENERATION:
-  // Encode the URL of this batch's receipt.
-  const receiptUrl =
-    `${await baseUrl()}/handover/receipt/` +
-    encodeURIComponent(summary.batchId);
+  const rawCapacity = attributes.capacity;
 
-  const qr = await qrToDataURL(receiptUrl, {
-    margin: 1,
-    width: 220,
+  const capacityText =
+    typeof rawCapacity === "string" ||
+    typeof rawCapacity === "number"
+      ? String(rawCapacity).trim()
+      : "";
+
+  const normalizedCapacity = capacityText
+    .replace(/\s+/g, "")
+    .toUpperCase();
+
+  let storage = capacityText || "Not set";
+
+  if (
+    normalizedCapacity === "512GB" ||
+    normalizedCapacity === "512"
+  ) {
+    storage = "512 GB";
+  } else if (
+    normalizedCapacity === "256GB" ||
+    normalizedCapacity === "256"
+  ) {
+    storage = "256 GB";
+  }
+
+  const cardTypeText =
+    typeof attributes.card_type === "string"
+      ? attributes.card_type.trim()
+      : "";
+
+  const normalizedCardType = cardTypeText.toLowerCase();
+  let cardType = cardTypeText || "Not set";
+
+  if (normalizedCardType === "black") {
+    cardType = "Black";
+  } else if (normalizedCardType === "green") {
+    cardType = "Green";
+  }
+
+  return { storage, cardType };
+}
+
+/** Display the stored amount, without treating missing values as zero. */
+function displayAmount(raw: string): string {
+  const cleaned = String(raw ?? "")
+    .trim()
+    .replace(/₹/g, "")
+    .replace(/\bINR\b/gi, "")
+    .replace(/[,\s]/g, "");
+
+  if (!cleaned || !/^\d+(?:\.\d+)?$/.test(cleaned)) {
+    return "Not set";
+  }
+
+  const amount = Number(cleaned);
+
+  if (!Number.isFinite(amount)) {
+    return "Not set";
+  }
+
+  return amount.toLocaleString("en-IN", {
+    style: "currency",
+    currency: "INR",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   });
+}
 
-  // Missing amounts are not treated as zero.
-  const missingPriceCount = summary.items.filter(
-    (item) => formatPrice(item.price) === ""
-  ).length;
+export default async function InventoryPage({
+  searchParams,
+}: PageProps<"/inventory">) {
+  const user = await requireRole();
+
+  // Corrections and Delete links remain Admin-only.
+  const isAdmin = user.role === "admin";
+
+  // CHANGED: show Add item to Admin, IM and Rig.
+  const canAdd =
+    user.role === "admin" ||
+    user.role === "im" ||
+    user.role === "rig";
+
+  const sp = await searchParams;
+  const q = one(sp.q).trim().toLowerCase();
+
+  const status = one(sp.status);
+  const statuses = status.split(",").filter(Boolean);
+
+  const hub = one(sp.hub);
+  const hubIds = hub.split(",").filter(Boolean);
+
+  const holder = one(sp.holder);
+  const requestedPage = Number(one(sp.page));
+
+  const validPage =
+    Number.isSafeInteger(requestedPage) && requestedPage > 0
+      ? requestedPage
+      : 1;
+
+  const store = getStore();
+
+  const [items, hubs, people] = await Promise.all([
+    store.list("items"),
+    store.list("hubs"),
+    store.list("people"),
+  ]);
+
+  const hubName = new Map(
+    hubs.map((h) => [h.hub_id, h.name])
+  );
+
+  const personName = new Map(
+    people.map((p) => [p.person_id, p.name])
+  );
+
+  const matches = items.filter(
+    (item) =>
+      (!statuses.length || statuses.includes(item.status)) &&
+      (!hubIds.length || hubIds.includes(item.current_hub)) &&
+      (!holder || item.current_holder === holder) &&
+      (!q ||
+        (item.item_id ?? "").toLowerCase().includes(q) ||
+        (item.prism_no ?? "").toLowerCase().includes(q) ||
+        (item.brand ?? "").toLowerCase().includes(q) ||
+        (item.model ?? "").toLowerCase().includes(q) ||
+        (item.attributes ?? "").toLowerCase().includes(q))
+  );
+
+  const pages = Math.max(
+    1,
+    Math.ceil(matches.length / PAGE_SIZE)
+  );
+
+  const page = Math.min(validPage, pages);
+
+  const shown = matches.slice(
+    (page - 1) * PAGE_SIZE,
+    page * PAGE_SIZE
+  );
+
+  const sortedHubs = [...hubs].sort((a, b) =>
+    a.name.localeCompare(b.name)
+  );
+
+  const activeHubs = sortedHubs.filter(
+    (h) => h.active !== "false"
+  );
+
+  const pageLink = (p: number) => {
+    const params = new URLSearchParams({
+      ...(q && { q }),
+      ...(status && { status }),
+      ...(hub && { hub }),
+      ...(holder && { holder }),
+      page: String(p),
+    });
+
+    return `/inventory?${params}`;
+  };
+
+  // Includes optional Admin checkbox and holder-specific Since column.
+  const columnCount =
+    12 + (isAdmin ? 1 : 0) + (holder ? 1 : 0);
+
+  const table = (
+    <div
+      role="region"
+      aria-label="Inventory table"
+      tabIndex={0}
+      style={{
+        width: "100%",
+        maxWidth: "100%",
+        overflowX: "auto",
+      }}
+    >
+      <table className={styles.table}>
+        <thead>
+          <tr>
+            {isAdmin && (
+              <th scope="col" aria-label="Select items" />
+            )}
+
+            <th scope="col">Serial</th>
+            <th scope="col">Prism no.</th>
+            <th scope="col">Brand</th>
+            <th scope="col">Model</th>
+            <th scope="col">Storage</th>
+            <th scope="col">Card type</th>
+            <th scope="col">Price / Penalty</th>
+            <th scope="col">Attributes</th>
+            <th scope="col">Status</th>
+            <th scope="col">Current hub</th>
+            <th scope="col">Holder</th>
+            {holder && <th scope="col">Since</th>}
+            <th scope="col">Home hub</th>
+          </tr>
+        </thead>
+
+        <tbody>
+          {shown.length === 0 ? (
+            <tr>
+              <td colSpan={columnCount} className={styles.muted}>
+                No items match the selected filters.
+              </td>
+            </tr>
+          ) : (
+            shown.map((item) => {
+              const { storage, cardType } = readCardDetails(
+                item.attributes
+              );
+
+              const itemUrl =
+                `/inventory/${encodeURIComponent(item.item_id)}`;
+
+              return (
+                <tr key={item.item_id}>
+                  {isAdmin && (
+                    <td>
+                      <input
+                        type="checkbox"
+                        name="ids"
+                        value={item.item_id}
+                        aria-label={`Select ${item.item_id}`}
+                      />
+                    </td>
+                  )}
+
+                  <td>
+                    <Link href={itemUrl}>
+                      {item.item_id}
+                    </Link>
+
+                    {/* Delete stays Admin-only.
+                        Opens confirmation; does not delete directly. */}
+                    {isAdmin && (
+                      <div style={{ marginTop: 8 }}>
+                        <Link
+                          href={`${itemUrl}/delete`}
+                          aria-label={`Delete item ${item.item_id}`}
+                          style={{
+                            display: "inline-block",
+                            padding: "5px 10px",
+                            border: "1px solid #b91c1c",
+                            borderRadius: 6,
+                            color: "#b91c1c",
+                            backgroundColor: "#fff7f7",
+                            fontWeight: 600,
+                            textDecoration: "none",
+                          }}
+                        >
+                          Delete
+                        </Link>
+                      </div>
+                    )}
+                  </td>
+
+                  <td>{item.prism_no}</td>
+                  <td>{item.brand}</td>
+                  <td>{item.model}</td>
+
+                  <td style={{ whiteSpace: "nowrap" }}>
+                    {storage}
+                  </td>
+
+                  <td>{cardType}</td>
+
+                  <td style={{ whiteSpace: "nowrap" }}>
+                    {displayAmount(item.price)}
+                  </td>
+
+                  <td>{formatAttributes(item.attributes)}</td>
+
+                  <td>
+                    {STATUS_LABELS[item.status] ?? item.status}
+                  </td>
+
+                  <td>
+                    {hubName.get(item.current_hub) ??
+                      item.current_hub}
+                  </td>
+
+                  <td>
+                    {personName.get(item.current_holder) ??
+                      item.current_holder}
+                  </td>
+
+                  {holder && (
+                    <td>{formatIst(item.updated_at)}</td>
+                  )}
+
+                  <td>
+                    {hubName.get(item.home_hub) ?? item.home_hub}
+                  </td>
+                </tr>
+              );
+            })
+          )}
+        </tbody>
+      </table>
+    </div>
+  );
 
   return (
-    <main className={styles.page}>
-      {/* Navigation is hidden when printing. */}
-      <p className={`${styles.back} ${styles.noPrint}`}>
-        <Link href="/handover/send">
-          ← Send items
-        </Link>
+    <main className={styles.pageWide}>
+      <p className={styles.back}>
+        <Link href="/">← Home</Link>
       </p>
 
-      {/* Everything inside this container is receipt content. */}
-      <div className={styles.receipt}>
-        <div
-          className={styles.receiptHead}
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "flex-start",
-            flexWrap: "wrap",
-            gap: 20,
-          }}
-        >
-          <div style={{ minWidth: 0 }}>
-            {/* INSTAWORK LOGO:
-                Save the image at public/instawork.png.
-                No website link is attached.
-                The logo appears on this receipt and its print/PDF. */}
-            {/* eslint-disable-next-line @next/next/no-img-element -- local receipt logo */}
-            <img
-              src="/instawork.png"
-              alt="Instawork"
-              width={180}
-              height={48}
-              loading="eager"
-              style={{
-                display: "block",
-                width: 180,
-                maxWidth: "100%",
-                height: "auto",
-                marginBottom: 16,
-              }}
-            />
-
-            <h1>
-              {ACTION_TITLE[summary.action] ??
-                "Batch record"}
-            </h1>
-
-            <p className={styles.muted}>
-              Batch {summary.batchId} ·{" "}
-              {formatIst(summary.occurredAt)} IST
-            </p>
-          </div>
-
-          {/* QR CODE DISPLAY:
-              Scan this code on the Receive items page
-              to identify the handover batch. */}
-          {/* eslint-disable-next-line @next/next/no-img-element -- generated QR data URI */}
-          <img
-            src={qr}
-            alt={`QR code for batch ${summary.batchId}`}
-            width={140}
-            height={140}
-            className={styles.qr}
-            style={{ flexShrink: 0 }}
-          />
-        </div>
-
-        {/* Sender, recipient and location details. */}
-        <dl className={styles.facts}>
-          <dt>From</dt>
-          <dd>{summary.fromName || "—"}</dd>
-
-          <dt>To</dt>
-          <dd>{summary.toName || "—"}</dd>
-
-          <dt>Location</dt>
-          <dd>{summary.hubName || "—"}</dd>
-
-          {summary.note && (
-            <>
-              <dt>Note</dt>
-              <dd>{summary.note}</dd>
-            </>
-          )}
-        </dl>
-
-        <h2>
-          {summary.items.length} item
-          {summary.items.length === 1 ? "" : "s"}
-        </h2>
-
-        <table className={styles.table}>
-          <thead>
-            <tr>
-              <th scope="col">#</th>
-              <th scope="col">Serial</th>
-              <th scope="col">Brand</th>
-              <th scope="col">Model</th>
-              <th scope="col">Penalty</th>
-              <th scope="col">Status</th>
-            </tr>
-          </thead>
-
-          <tbody>
-            {summary.items.map((item, index) => (
-              <tr key={item.itemId}>
-                <td>{index + 1}</td>
-                <td>{item.itemId}</td>
-                <td>{item.brand || "—"}</td>
-                <td>{item.model || "—"}</td>
-
-                {/* Read the configured amount saved in items.price.
-                    This page does not change or charge that amount. */}
-                <td style={{ whiteSpace: "nowrap" }}>
-                  {formatPrice(item.price) || "Not set"}
-                </td>
-
-                <td>
-                  {STATUS_LABELS[item.statusAfter] ??
-                    item.statusAfter}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-
-          <tfoot>
-            <tr>
-              <th
-                scope="row"
-                colSpan={4}
-                style={{ textAlign: "left" }}
-              >
-                {missingPriceCount > 0 &&
-                summary.totalPrice !== null
-                  ? "Known penalty amounts subtotal"
-                  : "Total listed penalty amount"}
-              </th>
-
-              <td style={{ whiteSpace: "nowrap" }}>
-                <strong>
-                  {summary.totalPrice !== null
-                    ? formatPrice(
-                        String(summary.totalPrice)
-                      )
-                    : "Not set"}
-                </strong>
-              </td>
-
-              <td></td>
-            </tr>
-          </tfoot>
-        </table>
-
-        {/* Warn when the stored amounts are incomplete. */}
-        {missingPriceCount > 0 && (
-          <p className={styles.muted}>
-            {missingPriceCount} item
-            {missingPriceCount === 1
-              ? " has"
-              : "s have"}{" "}
-            no valid stored amount. Missing amounts are
-            excluded from the total and must be verified.
-          </p>
-        )}
-
-        {/* Use this notice only if it reflects approved company policy.
-            The receipt does not itself authorize salary deductions. */}
-        <p
-          style={{
-            marginTop: 16,
-            padding: "12px 14px",
-            border: "1px solid #b91c1c",
-            borderLeft: "4px solid #b91c1c",
-            borderRadius: 6,
-            backgroundColor: "#fff7f7",
-            color: "#991b1b",
-            fontSize: 14,
-            lineHeight: 1.6,
-            fontWeight: 600,
-          }}
-        >
-          <strong>
-            IMPORTANT — ITEM RESPONSIBILITY:
-          </strong>{" "}
-          You are responsible for the safekeeping and timely
-          return of the items listed on this receipt. Any
-          loss or damage must be reported immediately. If
-          you are found responsible following review, the
-          applicable penalty may be deducted from your
-          salary, subject to company policy, any required
-          consent, and applicable law. The listed amounts
-          are not an automatic charge.
-        </p>
-
-        <p className={styles.muted}>
-          Scan the QR code above when receiving this batch
-          to load every item here in one go, instead of
-          scanning each one again.
-        </p>
+      {/* No logo on Inventory. Keep the logo in the receipt page only. */}
+      <div className={styles.pageHead}>
+        <h1>Inventory</h1>
       </div>
 
-      {/* The print button itself is hidden in print/PDF output. */}
-      <div className={styles.noPrint}>
-        <PrintButton />
+      {one(sp.done) && (
+        <p className={styles.ok}>
+          Updated {one(sp.done)} item(s)
+          {Number(one(sp.same)) > 0 &&
+            `, ${one(sp.same)} already in that state`}
+          .
+        </p>
+      )}
+
+      {isAdmin && one(sp.deleted) && (
+        <p className={styles.ok}>
+          Deleted {one(sp.deleted)} and its associated event history.
+        </p>
+      )}
+
+      {one(sp.error) && (
+        <p className={styles.error}>{one(sp.error)}</p>
+      )}
+
+      {/* CHANGED: Add item is visible to Admin, IM and Rig. */}
+      {canAdd && (
+        <details
+          className={styles.details}
+          open={
+            !!one(sp.added) ||
+            !!one(sp.addError) ||
+            undefined
+          }
+        >
+          <summary>+ Add an item</summary>
+
+          <p className={styles.muted}>
+            For an item that isn&apos;t in the inventory yet.
+            It starts in stock at the hub you choose, with its
+            own history from today.
+          </p>
+
+          {one(sp.added) && (
+            <p className={styles.ok}>
+              Added {one(sp.added)}.{" "}
+              <Link
+                href={`/inventory/${encodeURIComponent(
+                  one(sp.added)
+                )}`}
+              >
+                View it
+              </Link>
+              , or add another below.
+            </p>
+          )}
+
+          {one(sp.addError) && (
+            <p className={styles.error}>
+              {one(sp.addError)}
+            </p>
+          )}
+
+          <AddCardForm hubs={activeHubs} />
+        </details>
+      )}
+
+      <form className={styles.row} method="get">
+        <input
+          name="q"
+          defaultValue={one(sp.q)}
+          placeholder="Search serial, prism no., brand, model or attributes"
+          aria-label="Search inventory"
+        />
+
+        {statuses.length > 1 ? (
+          <>
+            <input type="hidden" name="status" value={status} />
+            <span className={styles.muted}>
+              Status:{" "}
+              {statuses
+                .map((s) => STATUS_LABELS[s as Status] ?? s)
+                .join(" or ")}{" "}
+              · <Link href="/inventory">clear</Link>
+            </span>
+          </>
+        ) : (
+          <select
+            name="status"
+            defaultValue={status}
+            aria-label="Status"
+          >
+            <option value="">All statuses</option>
+            {STATUSES.map((s) => (
+              <option key={s} value={s}>
+                {STATUS_LABELS[s]}
+              </option>
+            ))}
+          </select>
+        )}
+
+        {hubIds.length > 1 ? (
+          <>
+            <input type="hidden" name="hub" value={hub} />
+            <span className={styles.muted}>
+              Hubs:{" "}
+              {hubIds
+                .map((id) => hubName.get(id) ?? id)
+                .join(", ")}{" "}
+              · <Link href="/inventory">clear</Link>
+            </span>
+          </>
+        ) : (
+          <select
+            name="hub"
+            defaultValue={hub}
+            aria-label="Hub"
+          >
+            <option value="">All hubs</option>
+            {sortedHubs.map((h) => (
+              <option key={h.hub_id} value={h.hub_id}>
+                {h.name}
+              </option>
+            ))}
+          </select>
+        )}
+
+        {holder && (
+          <input type="hidden" name="holder" value={holder} />
+        )}
+
+        <button type="submit">Filter</button>
+
+        {holder && (
+          <span className={styles.muted}>
+            Holder:{" "}
+            {people.find((p) => p.person_id === holder)?.name ??
+              holder}{" "}
+            · <Link href="/inventory">clear</Link>
+          </span>
+        )}
+      </form>
+
+      <p className={styles.muted}>
+        {matches.length} of {items.length} items. Showing{" "}
+        {shown.length ? (page - 1) * PAGE_SIZE + 1 : 0}–
+        {(page - 1) * PAGE_SIZE + shown.length}.
+      </p>
+
+      <p className={styles.muted}>
+        Storage and card type come from saved item attributes.
+        Price / Penalty shows the saved amount, not an automatic
+        charge. Missing values show “Not set”.
+      </p>
+
+      {/* Corrections and selection checkboxes remain Admin-only. */}
+      {isAdmin ? (
+        <form action={applyCorrection} className={styles.list}>
+          <input
+            type="hidden"
+            name="back"
+            value="/inventory"
+          />
+
+          <CorrectionPanel
+            hubs={hubs}
+            people={people}
+            showScan
+          />
+
+          {table}
+        </form>
+      ) : (
+        table
+      )}
+
+      <div className={styles.row}>
+        {page > 1 && (
+          <Link href={pageLink(page - 1)}>← Previous</Link>
+        )}
+
+        <span className={styles.muted}>
+          Page {page} of {pages}
+        </span>
+
+        {page < pages && (
+          <Link href={pageLink(page + 1)}>Next →</Link>
+        )}
       </div>
     </main>
   );
