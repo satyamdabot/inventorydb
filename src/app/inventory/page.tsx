@@ -1,532 +1,477 @@
-import Link from "next/link";
-import { formatAttributes } from "@/lib/attributes";
-import { requireRole } from "@/lib/authz";
-import { STATUS_LABELS, one } from "@/lib/labels";
-import { STATUSES, type Status } from "@/lib/schema";
-import { getStore } from "@/lib/store";
-import { formatIst } from "@/lib/time";
+"use client";
+
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+} from "react";
+import { useFormStatus } from "react-dom";
 import styles from "../admin/admin.module.css";
-import AddCardForm from "./AddCardForm";
-import { applyCorrection } from "./actions";
-import CorrectionPanel from "./CorrectionPanel";
+import { addItem, lookupAsset } from "./actions";
 
-const PAGE_SIZE = 100;
+type Hubs = {
+  hub_id: string;
+  name: string;
+}[];
 
-/** Read saved storage and colour without failing on invalid JSON. */
-function readCardDetails(raw: string) {
-  let attributes: Record<string, unknown> = {};
+const fieldStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 6,
+  minWidth: 0,
+};
 
-  try {
-    const parsed: unknown = JSON.parse(raw || "{}");
+const inputStyle: CSSProperties = {
+  width: "100%",
+  minWidth: 0,
+  boxSizing: "border-box",
+  padding: "10px 12px",
+};
 
-    if (
-      parsed !== null &&
-      typeof parsed === "object" &&
-      !Array.isArray(parsed)
-    ) {
-      attributes = parsed as Record<string, unknown>;
-    }
-  } catch {
-    // Missing or invalid details display as "Not set".
-  }
-
-  const rawCapacity = attributes.capacity;
-
-  const capacityText =
-    typeof rawCapacity === "string" ||
-    typeof rawCapacity === "number"
-      ? String(rawCapacity).trim()
-      : "";
-
-  const normalizedCapacity = capacityText
-    .replace(/\s+/g, "")
-    .toUpperCase();
-
-  let storage = capacityText || "Not set";
-
-  if (
-    normalizedCapacity === "512GB" ||
-    normalizedCapacity === "512"
-  ) {
-    storage = "512 GB";
-  } else if (
-    normalizedCapacity === "256GB" ||
-    normalizedCapacity === "256"
-  ) {
-    storage = "256 GB";
-  }
-
-  const cardTypeText =
-    typeof attributes.card_type === "string"
-      ? attributes.card_type.trim()
-      : "";
-
-  const normalizedCardType = cardTypeText.toLowerCase();
-  let cardType = cardTypeText || "Not set";
-
-  if (normalizedCardType === "black") {
-    cardType = "Black";
-  } else if (normalizedCardType === "green") {
-    cardType = "Green";
-  }
-
-  return { storage, cardType };
+// Display the fixed penalty.
+// The server independently calculates the amount before saving.
+function penaltyForCapacity(capacity: string): string {
+  if (capacity === "256 GB") return "10000";
+  if (capacity === "512 GB") return "20000";
+  return "";
 }
 
-/** Display the stored amount, without treating missing values as zero. */
-function displayAmount(raw: string): string {
-  const cleaned = String(raw ?? "")
-    .trim()
-    .replace(/₹/g, "")
-    .replace(/\bINR\b/gi, "")
-    .replace(/[,\s]/g, "");
-
-  if (!cleaned || !/^\d+(?:\.\d+)?$/.test(cleaned)) {
-    return "Not set";
-  }
-
-  const amount = Number(cleaned);
-
-  if (!Number.isFinite(amount)) {
-    return "Not set";
-  }
-
-  return amount.toLocaleString("en-IN", {
-    style: "currency",
-    currency: "INR",
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  });
-}
-
-export default async function InventoryPage({
-  searchParams,
-}: PageProps<"/inventory">) {
-  const user = await requireRole();
-
-  // Corrections and Delete links remain Admin-only.
-  const isAdmin = user.role === "admin";
-
-  // CHANGED: show Add item to Admin, IM and Rig.
-  const canAdd =
-    user.role === "admin" ||
-    user.role === "im" ||
-    user.role === "rig";
-
-  const sp = await searchParams;
-  const q = one(sp.q).trim().toLowerCase();
-
-  const status = one(sp.status);
-  const statuses = status.split(",").filter(Boolean);
-
-  const hub = one(sp.hub);
-  const hubIds = hub.split(",").filter(Boolean);
-
-  const holder = one(sp.holder);
-  const requestedPage = Number(one(sp.page));
-
-  const validPage =
-    Number.isSafeInteger(requestedPage) && requestedPage > 0
-      ? requestedPage
-      : 1;
-
-  const store = getStore();
-
-  const [items, hubs, people] = await Promise.all([
-    store.list("items"),
-    store.list("hubs"),
-    store.list("people"),
-  ]);
-
-  const hubName = new Map(
-    hubs.map((h) => [h.hub_id, h.name])
-  );
-
-  const personName = new Map(
-    people.map((p) => [p.person_id, p.name])
-  );
-
-  const matches = items.filter(
-    (item) =>
-      (!statuses.length || statuses.includes(item.status)) &&
-      (!hubIds.length || hubIds.includes(item.current_hub)) &&
-      (!holder || item.current_holder === holder) &&
-      (!q ||
-        (item.item_id ?? "").toLowerCase().includes(q) ||
-        (item.prism_no ?? "").toLowerCase().includes(q) ||
-        (item.brand ?? "").toLowerCase().includes(q) ||
-        (item.model ?? "").toLowerCase().includes(q) ||
-        (item.attributes ?? "").toLowerCase().includes(q))
-  );
-
-  const pages = Math.max(
-    1,
-    Math.ceil(matches.length / PAGE_SIZE)
-  );
-
-  const page = Math.min(validPage, pages);
-
-  const shown = matches.slice(
-    (page - 1) * PAGE_SIZE,
-    page * PAGE_SIZE
-  );
-
-  const sortedHubs = [...hubs].sort((a, b) =>
-    a.name.localeCompare(b.name)
-  );
-
-  const activeHubs = sortedHubs.filter(
-    (h) => h.active !== "false"
-  );
-
-  const pageLink = (p: number) => {
-    const params = new URLSearchParams({
-      ...(q && { q }),
-      ...(status && { status }),
-      ...(hub && { hub }),
-      ...(holder && { holder }),
-      page: String(p),
-    });
-
-    return `/inventory?${params}`;
-  };
-
-  // Includes optional Admin checkbox and holder-specific Since column.
-  const columnCount =
-    12 + (isAdmin ? 1 : 0) + (holder ? 1 : 0);
-
-  const table = (
-    <div
-      role="region"
-      aria-label="Inventory table"
-      tabIndex={0}
-      style={{
-        width: "100%",
-        maxWidth: "100%",
-        overflowX: "auto",
-      }}
-    >
-      <table className={styles.table}>
-        <thead>
-          <tr>
-            {isAdmin && (
-              <th scope="col" aria-label="Select items" />
-            )}
-
-            <th scope="col">Serial</th>
-            <th scope="col">Prism no.</th>
-            <th scope="col">Brand</th>
-            <th scope="col">Model</th>
-            <th scope="col">Storage</th>
-            <th scope="col">Card type</th>
-            <th scope="col">Price / Penalty</th>
-            <th scope="col">Attributes</th>
-            <th scope="col">Status</th>
-            <th scope="col">Current hub</th>
-            <th scope="col">Holder</th>
-            {holder && <th scope="col">Since</th>}
-            <th scope="col">Home hub</th>
-          </tr>
-        </thead>
-
-        <tbody>
-          {shown.length === 0 ? (
-            <tr>
-              <td colSpan={columnCount} className={styles.muted}>
-                No items match the selected filters.
-              </td>
-            </tr>
-          ) : (
-            shown.map((item) => {
-              const { storage, cardType } = readCardDetails(
-                item.attributes
-              );
-
-              const itemUrl =
-                `/inventory/${encodeURIComponent(item.item_id)}`;
-
-              return (
-                <tr key={item.item_id}>
-                  {isAdmin && (
-                    <td>
-                      <input
-                        type="checkbox"
-                        name="ids"
-                        value={item.item_id}
-                        aria-label={`Select ${item.item_id}`}
-                      />
-                    </td>
-                  )}
-
-                  <td>
-                    <Link href={itemUrl}>
-                      {item.item_id}
-                    </Link>
-
-                    {/* Delete stays Admin-only.
-                        Opens confirmation; does not delete directly. */}
-                    {isAdmin && (
-                      <div style={{ marginTop: 8 }}>
-                        <Link
-                          href={`${itemUrl}/delete`}
-                          aria-label={`Delete item ${item.item_id}`}
-                          style={{
-                            display: "inline-block",
-                            padding: "5px 10px",
-                            border: "1px solid #b91c1c",
-                            borderRadius: 6,
-                            color: "#b91c1c",
-                            backgroundColor: "#fff7f7",
-                            fontWeight: 600,
-                            textDecoration: "none",
-                          }}
-                        >
-                          Delete
-                        </Link>
-                      </div>
-                    )}
-                  </td>
-
-                  <td>{item.prism_no}</td>
-                  <td>{item.brand}</td>
-                  <td>{item.model}</td>
-
-                  <td style={{ whiteSpace: "nowrap" }}>
-                    {storage}
-                  </td>
-
-                  <td>{cardType}</td>
-
-                  <td style={{ whiteSpace: "nowrap" }}>
-                    {displayAmount(item.price)}
-                  </td>
-
-                  <td>{formatAttributes(item.attributes)}</td>
-
-                  <td>
-                    {STATUS_LABELS[item.status] ?? item.status}
-                  </td>
-
-                  <td>
-                    {hubName.get(item.current_hub) ??
-                      item.current_hub}
-                  </td>
-
-                  <td>
-                    {personName.get(item.current_holder) ??
-                      item.current_holder}
-                  </td>
-
-                  {holder && (
-                    <td>{formatIst(item.updated_at)}</td>
-                  )}
-
-                  <td>
-                    {hubName.get(item.home_hub) ?? item.home_hub}
-                  </td>
-                </tr>
-              );
-            })
-          )}
-        </tbody>
-      </table>
-    </div>
-  );
+function AddButton({
+  lookupBusy,
+}: {
+  lookupBusy: boolean;
+}) {
+  const { pending } = useFormStatus();
 
   return (
-    <main className={styles.pageWide}>
-      <p className={styles.back}>
-        <Link href="/">← Home</Link>
-      </p>
+    <button type="submit" disabled={lookupBusy || pending}>
+      {pending ? "Saving…" : "Add item"}
+    </button>
+  );
+}
 
-      {/* No logo on Inventory. Keep the logo in the receipt page only. */}
-      <div className={styles.pageHead}>
-        <h1>Inventory</h1>
-      </div>
+export default function AddCardForm({
+  hubs,
+}: {
+  hubs: Hubs;
+}) {
+  const [serial, setSerial] = useState("");
+  const [prismNo, setPrismNo] = useState("");
+  const [brand, setBrand] = useState("");
+  const [model, setModel] = useState("");
+  const [capacity, setCapacity] = useState("");
+  const [cardType, setCardType] = useState("");
+  const [note, setNote] = useState("");
 
-      {one(sp.done) && (
-        <p className={styles.ok}>
-          Updated {one(sp.done)} item(s)
-          {Number(one(sp.same)) > 0 &&
-            `, ${one(sp.same)} already in that state`}
-          .
-        </p>
-      )}
+  const [lookingUp, setLookingUp] = useState(false);
+  const [waitingToLookup, setWaitingToLookup] = useState(false);
 
-      {isAdmin && one(sp.deleted) && (
-        <p className={styles.ok}>
-          Deleted {one(sp.deleted)} and its associated event history.
-        </p>
-      )}
+  const requestId = useRef(0);
+  const lastSuccessfulSerial = useRef("");
+  const activeLookupSerial = useRef("");
 
-      {one(sp.error) && (
-        <p className={styles.error}>{one(sp.error)}</p>
-      )}
+  const lookupTimer = useRef<
+    ReturnType<typeof setTimeout> | null
+  >(null);
 
-      {/* CHANGED: Add item is visible to Admin, IM and Rig. */}
-      {canAdd && (
-        <details
-          className={styles.details}
-          open={
-            !!one(sp.added) ||
-            !!one(sp.addError) ||
-            undefined
-          }
-        >
-          <summary>+ Add an item</summary>
+  const lookupBusy = lookingUp || waitingToLookup;
 
-          <p className={styles.muted}>
-            For an item that isn&apos;t in the inventory yet.
-            It starts in stock at the hub you choose, with its
-            own history from today.
-          </p>
+  // Derive the amount directly from storage.
+  const price = penaltyForCapacity(capacity);
 
-          {one(sp.added) && (
-            <p className={styles.ok}>
-              Added {one(sp.added)}.{" "}
-              <Link
-                href={`/inventory/${encodeURIComponent(
-                  one(sp.added)
-                )}`}
-              >
-                View it
-              </Link>
-              , or add another below.
-            </p>
-          )}
+  // Prefer the canonical ID; otherwise match the displayed hub name.
+  // The parent Inventory page supplies active hubs.
+  const bangaloreHub =
+    hubs.find(
+      (hub) =>
+        hub.hub_id.trim().toLowerCase() === "bangalore"
+    ) ??
+    hubs.find(
+      (hub) =>
+        hub.name.trim().toLowerCase() === "bangalore"
+    );
 
-          {one(sp.addError) && (
-            <p className={styles.error}>
-              {one(sp.addError)}
-            </p>
-          )}
+  // Cancel scheduled work and ignore responses after unmount.
+  useEffect(() => {
+    return () => {
+      if (lookupTimer.current !== null) {
+        clearTimeout(lookupTimer.current);
+        lookupTimer.current = null;
+      }
 
-          <AddCardForm hubs={activeHubs} />
-        </details>
-      )}
+      requestId.current += 1;
+      activeLookupSerial.current = "";
+    };
+  }, []);
 
-      <form className={styles.row} method="get">
-        <input
-          name="q"
-          defaultValue={one(sp.q)}
-          placeholder="Search serial, prism no., brand, model or attributes"
-          aria-label="Search inventory"
-        />
+  function clearDetails() {
+    setPrismNo("");
+    setBrand("");
+    setModel("");
+    setCapacity("");
+    setCardType("");
+  }
 
-        {statuses.length > 1 ? (
-          <>
-            <input type="hidden" name="status" value={status} />
-            <span className={styles.muted}>
-              Status:{" "}
-              {statuses
-                .map((s) => STATUS_LABELS[s as Status] ?? s)
-                .join(" or ")}{" "}
-              · <Link href="/inventory">clear</Link>
-            </span>
-          </>
-        ) : (
-          <select
-            name="status"
-            defaultValue={status}
-            aria-label="Status"
-          >
-            <option value="">All statuses</option>
-            {STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {STATUS_LABELS[s]}
-              </option>
-            ))}
-          </select>
-        )}
+  function cancelScheduledLookup() {
+    if (lookupTimer.current !== null) {
+      clearTimeout(lookupTimer.current);
+      lookupTimer.current = null;
+    }
 
-        {hubIds.length > 1 ? (
-          <>
-            <input type="hidden" name="hub" value={hub} />
-            <span className={styles.muted}>
-              Hubs:{" "}
-              {hubIds
-                .map((id) => hubName.get(id) ?? id)
-                .join(", ")}{" "}
-              · <Link href="/inventory">clear</Link>
-            </span>
-          </>
-        ) : (
-          <select
-            name="hub"
-            defaultValue={hub}
-            aria-label="Hub"
-          >
-            <option value="">All hubs</option>
-            {sortedHubs.map((h) => (
-              <option key={h.hub_id} value={h.hub_id}>
-                {h.name}
-              </option>
-            ))}
-          </select>
-        )}
+    setWaitingToLookup(false);
+  }
 
-        {holder && (
-          <input type="hidden" name="holder" value={holder} />
-        )}
+  function changeSerial(value: string) {
+    cancelScheduledLookup();
 
-        <button type="submit">Filter</button>
+    // Invalidate the previous serial's pending lookup.
+    requestId.current += 1;
+    lastSuccessfulSerial.current = "";
+    activeLookupSerial.current = "";
 
-        {holder && (
-          <span className={styles.muted}>
-            Holder:{" "}
-            {people.find((p) => p.person_id === holder)?.name ??
-              holder}{" "}
-            · <Link href="/inventory">clear</Link>
-          </span>
-        )}
-      </form>
+    setSerial(value);
+    setLookingUp(false);
+    clearDetails();
+    setNote("");
 
-      <p className={styles.muted}>
-        {matches.length} of {items.length} items. Showing{" "}
-        {shown.length ? (page - 1) * PAGE_SIZE + 1 : 0}–
-        {(page - 1) * PAGE_SIZE + shown.length}.
-      </p>
+    const trimmed = value.trim();
 
-      <p className={styles.muted}>
-        Storage and card type come from saved item attributes.
-        Price / Penalty shows the saved amount, not an automatic
-        charge. Missing values show “Not set”.
-      </p>
+    if (!trimmed) return;
 
-      {/* Corrections and selection checkboxes remain Admin-only. */}
-      {isAdmin ? (
-        <form action={applyCorrection} className={styles.list}>
+    setWaitingToLookup(true);
+
+    // Automatically fetch after a typing/scanning pause.
+    lookupTimer.current = setTimeout(() => {
+      lookupTimer.current = null;
+      void lookup(trimmed);
+    }, 600);
+  }
+
+  async function lookup(
+    value: string,
+    force = false
+  ) {
+    cancelScheduledLookup();
+
+    const trimmed = value.trim();
+
+    if (!trimmed) {
+      setNote("Enter or scan an Asset Tag first.");
+      return;
+    }
+
+    const normalized = trimmed.toLowerCase();
+
+    // Avoid duplicate concurrent requests for the same serial.
+    if (activeLookupSerial.current === normalized) return;
+
+    // Preserve manual edits unless the user explicitly fetches again.
+    if (
+      !force &&
+      lastSuccessfulSerial.current === normalized
+    ) {
+      return;
+    }
+
+    const currentRequest = ++requestId.current;
+    activeLookupSerial.current = normalized;
+
+    setLookingUp(true);
+    setNote("");
+
+    try {
+      const found = await lookupAsset(trimmed);
+
+      if (currentRequest !== requestId.current) return;
+
+      if (!found) {
+        lastSuccessfulSerial.current = "";
+        clearDetails();
+
+        setNote(
+          "No matching Asset Tag found. Enter the details manually and select storage to calculate the penalty."
+        );
+        return;
+      }
+
+      const foundCapacity =
+        found.capacity === "256 GB" ||
+        found.capacity === "512 GB"
+          ? found.capacity
+          : "";
+
+      const foundCardType =
+        found.cardType === "Black" ||
+        found.cardType === "Green"
+          ? found.cardType
+          : "";
+
+      setPrismNo(found.prismNo ?? "");
+      setBrand(found.brand ?? "");
+      setModel(found.model ?? "");
+      setCapacity(foundCapacity);
+      setCardType(foundCardType);
+
+      lastSuccessfulSerial.current = normalized;
+
+      const missing: string[] = [];
+
+      if (!found.prismNo) missing.push("Prism number");
+      if (!found.brand) missing.push("brand");
+      if (!found.model) missing.push("model");
+      if (!foundCapacity) missing.push("storage");
+      if (!foundCardType) missing.push("card colour");
+
+      setNote(
+        missing.length
+          ? `Asset found. Missing details: ${missing.join(
+              ", "
+            )}. Enter these manually. Penalty is calculated from storage.`
+          : "Card details loaded. Review the home hub and click Add item."
+      );
+    } catch {
+      if (currentRequest !== requestId.current) return;
+
+      lastSuccessfulSerial.current = "";
+      clearDetails();
+
+      setNote(
+        "Could not load the asset sheet. Retry with Fetch details or enter the details manually."
+      );
+    } finally {
+      if (currentRequest === requestId.current) {
+        activeLookupSerial.current = "";
+        setLookingUp(false);
+      }
+    }
+  }
+
+  return (
+    <form
+      action={addItem}
+      aria-label="Add inventory item"
+      onSubmit={(event) => {
+        // Block mouse and keyboard submissions during lookup.
+        if (
+          lookupTimer.current !== null ||
+          activeLookupSerial.current ||
+          lookupBusy
+        ) {
+          event.preventDefault();
+        }
+      }}
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 16,
+        width: "100%",
+      }}
+    >
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns:
+            "repeat(auto-fit, minmax(min(100%, 220px), 1fr))",
+          gap: 16,
+          alignItems: "start",
+        }}
+      >
+        <label style={fieldStyle}>
+          <span>Serial / Asset Tag *</span>
+
           <input
-            type="hidden"
-            name="back"
-            value="/inventory"
+            name="itemId"
+            placeholder="Scan or type — details load automatically"
+            value={serial}
+            onChange={(event) =>
+              changeSerial(event.target.value)
+            }
+            onBlur={(event) => {
+              if (event.currentTarget.value.trim()) {
+                void lookup(event.currentTarget.value);
+              }
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                void lookup(event.currentTarget.value);
+              }
+            }}
+            autoComplete="off"
+            spellCheck={false}
+            required
+            style={inputStyle}
+          />
+        </label>
+
+        {/* Bangalore is selected by default.
+            Dropdown remains editable and has no required attribute.
+            A blank submission uses Bangalore on the server. */}
+        <label style={fieldStyle}>
+          <span>Home hub</span>
+
+          <select
+            name="homeHub"
+            defaultValue={bangaloreHub?.hub_id ?? ""}
+            style={inputStyle}
+          >
+            <option value="">
+              {bangaloreHub
+                ? "Use default: Bangalore"
+                : "Select home hub — Bangalore unavailable"}
+            </option>
+
+            {hubs.map((hub) => (
+              <option key={hub.hub_id} value={hub.hub_id}>
+                {hub.name}
+              </option>
+            ))}
+          </select>
+
+          <small className={styles.muted}>
+            {bangaloreHub
+              ? "Defaults to Bangalore. Choose another hub if needed."
+              : "The default Bangalore hub is unavailable. Select another hub."}
+          </small>
+        </label>
+
+        <label style={fieldStyle}>
+          <span>Prism number</span>
+
+          <input
+            name="prismNo"
+            placeholder="Prism number"
+            value={prismNo}
+            onChange={(event) =>
+              setPrismNo(event.target.value)
+            }
+            readOnly={lookupBusy}
+            style={inputStyle}
+          />
+        </label>
+
+        <label style={fieldStyle}>
+          <span>Brand</span>
+
+          <input
+            name="brand"
+            placeholder="Brand"
+            value={brand}
+            onChange={(event) =>
+              setBrand(event.target.value)
+            }
+            readOnly={lookupBusy}
+            style={inputStyle}
+          />
+        </label>
+
+        <label style={fieldStyle}>
+          <span>Model</span>
+
+          <input
+            name="model"
+            placeholder="Model"
+            value={model}
+            onChange={(event) =>
+              setModel(event.target.value)
+            }
+            readOnly={lookupBusy}
+            style={inputStyle}
+          />
+        </label>
+
+        {/* Storage is required because it determines the penalty. */}
+        <label style={fieldStyle}>
+          <span>Storage of card *</span>
+
+          <select
+            name="capacity"
+            value={capacity}
+            onChange={(event) =>
+              setCapacity(event.target.value)
+            }
+            disabled={lookupBusy}
+            required
+            style={inputStyle}
+          >
+            <option value="">Select storage</option>
+            <option value="256 GB">256 GB</option>
+            <option value="512 GB">512 GB</option>
+          </select>
+        </label>
+
+        <label style={fieldStyle}>
+          <span>Type of card / colour</span>
+
+          <select
+            name="cardType"
+            value={cardType}
+            onChange={(event) =>
+              setCardType(event.target.value)
+            }
+            disabled={lookupBusy}
+            style={inputStyle}
+          >
+            <option value="">Select card type</option>
+            <option value="Black">Black</option>
+            <option value="Green">Green</option>
+          </select>
+        </label>
+
+        {/* Fixed amount, not manually editable. */}
+        <label style={fieldStyle}>
+          <span>Penalty amount (₹)</span>
+
+          <input
+            name="price"
+            type="number"
+            value={price}
+            placeholder="Calculated from storage"
+            readOnly
+            style={inputStyle}
           />
 
-          <CorrectionPanel
-            hubs={hubs}
-            people={people}
-            showScan
-          />
-
-          {table}
-        </form>
-      ) : (
-        table
-      )}
-
-      <div className={styles.row}>
-        {page > 1 && (
-          <Link href={pageLink(page - 1)}>← Previous</Link>
-        )}
-
-        <span className={styles.muted}>
-          Page {page} of {pages}
-        </span>
-
-        {page < pages && (
-          <Link href={pageLink(page + 1)}>Next →</Link>
-        )}
+          <small className={styles.muted}>
+            256 GB: ₹10,000 · 512 GB: ₹20,000
+          </small>
+        </label>
       </div>
-    </main>
+
+      <div
+        style={{
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 12,
+          alignItems: "center",
+        }}
+      >
+        <button
+          type="button"
+          disabled={lookingUp || !serial.trim()}
+          onClick={() => {
+            void lookup(serial, true);
+          }}
+        >
+          {lookingUp ? "Fetching…" : "Fetch details"}
+        </button>
+
+        <AddButton lookupBusy={lookupBusy} />
+      </div>
+
+      <p
+        className={styles.muted}
+        role="status"
+        aria-live="polite"
+        style={{ margin: 0 }}
+      >
+        {lookingUp
+          ? "Looking up card details…"
+          : waitingToLookup
+            ? "Waiting for typing or scanning to finish…"
+            : note ||
+              "Enter an Asset Tag. Details load automatically. Review the card details before saving."}
+      </p>
+    </form>
   );
 }
