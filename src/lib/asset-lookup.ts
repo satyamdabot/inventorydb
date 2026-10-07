@@ -1,4 +1,6 @@
-/** Details returned to the Add item form. */
+/**
+ * Details returned from the reference asset sheet.
+ */
 export interface AssetRecord {
   itemId: string;
   brand: string;
@@ -10,12 +12,8 @@ export interface AssetRecord {
 }
 
 /**
- * Convert a valid amount into a plain numeric string.
- * Examples:
- * "₹7,500.00" -> "7500.00"
- * "INR 7500"  -> "7500"
- *
- * Missing or invalid values stay blank—not zero.
+ * Preserve this exported helper for existing imports.
+ * Convert a rupee amount to a plain numeric string.
  */
 export function cleanPrice(raw: string): string {
   const cleaned = String(raw ?? "")
@@ -28,33 +26,30 @@ export function cleanPrice(raw: string): string {
     return "";
   }
 
-  const amount = Number(cleaned);
-
-  return Number.isFinite(amount) ? cleaned : "";
+  return Number.isFinite(Number(cleaned)) ? cleaned : "";
 }
 
-/** Normalize supported storage values for the form dropdown. */
+/** Normalize storage to the values supported by the form. */
 export function normalizeCapacity(raw: string): string {
   const value = String(raw ?? "")
     .trim()
     .replace(/\s+/g, "")
     .toUpperCase();
 
-  if (value === "512" || value === "512GB") {
-    return "512 GB";
-  }
-
   if (value === "256" || value === "256GB") {
     return "256 GB";
+  }
+
+  if (value === "512" || value === "512GB") {
+    return "512 GB";
   }
 
   return "";
 }
 
 /**
- * Normalize explicit colour values.
- * Accepts Black, Black card, Green, and Green card.
- * Does not infer colour from a model or brand.
+ * Normalize explicit card colours.
+ * Do not guess colour from storage, model or brand.
  */
 export function normalizeCardType(raw: string): string {
   const value = String(raw ?? "")
@@ -73,19 +68,50 @@ export function normalizeCardType(raw: string): string {
   return "";
 }
 
-/** Ignore spaces, case and punctuation when matching headers. */
+/** Fixed penalty based on the card's storage. */
+function penaltyForCapacity(capacity: string): string {
+  if (capacity === "256 GB") return "10000";
+  if (capacity === "512 GB") return "20000";
+
+  // Unknown storage does not mean a zero penalty.
+  return "";
+}
+
+/**
+ * Make header comparisons ignore case, spaces and punctuation.
+ * For example, "Model No." and "model_no" both become "modelno".
+ */
 function normalizeHeader(raw: string): string {
   return String(raw ?? "")
+    .replace(/^\uFEFF/, "")
     .toLowerCase()
     .replace(/[^a-z0-9]/g, "");
 }
 
 /**
- * Parse one reference asset-sheet row.
+ * Treat common placeholder text as missing.
+ * Keep actual model identifiers unchanged.
+ */
+function cleanCell(raw: unknown): string {
+  const value = String(raw ?? "").trim();
+
+  if (
+    /^(?:n\/a|n\.a\.|not available|not set|null|undefined|-|—)$/i.test(
+      value
+    )
+  ) {
+    return "";
+  }
+
+  return value;
+}
+
+/**
+ * Parse a reference-sheet row.
  *
- * When headers are supplied, columns are matched by name.
- * Without headers, preserve the original A:I column mapping:
+ * Preferred: pass row-1 headers so columns are matched by name.
  *
+ * Legacy layout when no headers are supplied:
  * A: Asset Tag
  * B: SD Card Serial No
  * C: Storage
@@ -104,81 +130,106 @@ export function parseAssetRow(
   const normalizedHeaders = headers.map(normalizeHeader);
 
   /**
-   * Return non-empty values from matching columns in priority order.
-   * This allows a blank Penalty cell to fall back to Price.
+   * Read non-empty cells from the specified header aliases.
+   * A blank first matching column does not hide later values.
    */
-  function values(
+  function columnValues(
     aliases: string[],
     legacyIndex?: number
   ): string[] {
     if (headers.length === 0) {
       if (legacyIndex === undefined) return [];
 
-      const value = String(row[legacyIndex] ?? "").trim();
+      const value = cleanCell(row[legacyIndex]);
       return value ? [value] : [];
     }
 
-    const results: string[] = [];
+    const values: string[] = [];
+    const visitedColumns = new Set<number>();
 
     for (const alias of aliases) {
-      const expected = normalizeHeader(alias);
+      const expectedHeader = normalizeHeader(alias);
 
-      for (let index = 0; index < normalizedHeaders.length; index++) {
-        if (normalizedHeaders[index] !== expected) continue;
+      for (
+        let index = 0;
+        index < normalizedHeaders.length;
+        index++
+      ) {
+        if (
+          normalizedHeaders[index] !== expectedHeader ||
+          visitedColumns.has(index)
+        ) {
+          continue;
+        }
 
-        const value = String(row[index] ?? "").trim();
+        visitedColumns.add(index);
+
+        const value = cleanCell(row[index]);
 
         if (value) {
-          results.push(value);
+          values.push(value);
         }
       }
     }
 
-    return results;
+    return values;
   }
 
   function firstValue(
     aliases: string[],
     legacyIndex?: number
   ): string {
-    return values(aliases, legacyIndex)[0] ?? "";
+    return columnValues(aliases, legacyIndex)[0] ?? "";
   }
 
-  // Match only Asset Tag, not another serial column.
+  // Match by Asset Tag, not by a different serial column.
   const itemId = firstValue(["Asset Tag"], 0);
 
   if (!itemId) return null;
 
+  const brand = firstValue(
+    ["Brand", "Card Brand", "SD Card Brand"],
+    4
+  );
+
+  /*
+   * MODEL AUTO-FILL:
+   * Read the first available value from explicitly named model columns.
+   * Never substitute the brand, storage or colour for a missing model.
+   */
   const model = firstValue(
     [
       "Model",
       "Model Name",
+      "Model No",
+      "Model Number",
       "Card Model",
+      "Card Model Name",
+      "Card Model No",
+      "Card Model Number",
       "SD Card Model",
+      "SD Card Model Name",
+      "SD Card Model No",
+      "SD Card Model Number",
     ],
     5
   );
 
-  // Prefer the original Penalty source, then fall back to Price.
-  // This preserves your current form's "Price / source penalty" use.
-  let price = "";
-
-  for (const value of values(
-    ["Penalty", "Penalty Amount", "Price", "Card Price"],
-    7
-  )) {
-    const cleaned = cleanPrice(value);
-
-    if (cleaned !== "") {
-      price = cleaned;
-      break;
-    }
-  }
+  const prismNo = firstValue(
+    ["Prism No", "Prism Number"],
+    6
+  );
 
   let capacity = "";
 
-  for (const value of values(
-    ["Storage", "Capacity", "Storage Capacity", "Card Storage"],
+  for (const value of columnValues(
+    [
+      "Storage",
+      "Capacity",
+      "Storage Capacity",
+      "Card Storage",
+      "Storage of Card",
+    ],
     2
   )) {
     const normalized = normalizeCapacity(value);
@@ -189,20 +240,22 @@ export function parseAssetRow(
     }
   }
 
-  // If storage is unavailable, use the tab name.
+  // Your reference tabs are named "256 GB" and "512 GB".
   if (!capacity) {
     capacity = normalizeCapacity(tabCapacity);
   }
 
   let cardType = "";
 
-  for (const value of values([
+  for (const value of columnValues([
     "Card Colour",
     "Card Color",
     "Colour",
     "Color",
     "Card Type",
     "Type of Card",
+    "Type of Card / Colour",
+    "Type of Card / Color",
   ])) {
     const normalized = normalizeCardType(value);
 
@@ -214,26 +267,28 @@ export function parseAssetRow(
 
   return {
     itemId,
-    brand: firstValue(["Brand", "Card Brand"], 4),
+    brand,
     model,
-    prismNo: firstValue(["Prism No", "Prism Number"], 6),
-    price,
+    prismNo,
     capacity,
     cardType,
+
+    // Ignore the source price: apply your fixed penalty rule.
+    price: penaltyForCapacity(capacity),
   };
 }
 
-/** Case-insensitive lookup using the Asset Tag. */
+/** Find a card by its Asset Tag, ignoring letter case. */
 export function findAsset(
   records: AssetRecord[],
   serial: string
 ): AssetRecord | undefined {
-  const normalized = serial.trim().toLowerCase();
+  const normalizedSerial = serial.trim().toLowerCase();
 
-  if (!normalized) return undefined;
+  if (!normalizedSerial) return undefined;
 
   return records.find(
     (record) =>
-      record.itemId.trim().toLowerCase() === normalized
+      record.itemId.trim().toLowerCase() === normalizedSerial
   );
 }
