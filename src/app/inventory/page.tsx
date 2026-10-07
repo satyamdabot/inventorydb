@@ -332,9 +332,68 @@ export default async function InventoryPage({
         <Link href="/">← Home</Link>
       </p>
 
-      <div className={styles.pageHead}>
-        <h1>Inventory</h1>
-      </div>
+      {/* Instawork logo and website link. */}
+<div
+  className={styles.pageHead}
+  style={{
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    flexWrap: "wrap",
+    gap: 16,
+    marginBottom: 20,
+  }}
+>
+  <div
+    style={{
+      display: "flex",
+      flexDirection: "column",
+      gap: 12,
+    }}
+  >
+    <a
+      href="https://www.instawork.com/"
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label="Visit Instawork — opens in a new tab"
+      style={{
+        display: "inline-block",
+        width: "fit-content",
+      }}
+    >
+      {/* Logo file: public/instawork-logo.png */}
+      {/* eslint-disable-next-line @next/next/no-img-element -- local brand logo */}
+      <img
+        src="/instawork-logo.png"
+        alt="Instawork"
+        width={180}
+        height={48}
+        style={{
+          display: "block",
+          width: 180,
+          maxWidth: "100%",
+          height: "auto",
+        }}
+      />
+    </a>
+
+    <h1 style={{ margin: 0 }}>Inventory</h1>
+  </div>
+
+  <a
+    href="https://www.instawork.com/"
+    target="_blank"
+    rel="noopener noreferrer"
+    aria-label="instawork.com — opens in a new tab"
+    style={{
+      color: "#1d4ed8",
+      fontWeight: 600,
+      textDecoration: "underline",
+    }}
+  >
+    instawork.com ↗
+  </a>
+</div>
 
       {one(sp.done) && (
         <p className={styles.ok}>
