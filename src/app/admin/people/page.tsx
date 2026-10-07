@@ -14,13 +14,23 @@ const ROLE_LABELS = {
   rig: "Rig team",
 } as const;
 
+type PersonRole = keyof typeof ROLE_LABELS;
+
 function normalize(value: string): string {
   return value.trim().toLowerCase();
+}
+
+function isPersonRole(value: string): value is PersonRole {
+  return Object.prototype.hasOwnProperty.call(
+    ROLE_LABELS,
+    value
+  );
 }
 
 export default async function PeoplePage({
   searchParams,
 }: PageProps<"/admin/people">) {
+  // Keep existing access permissions.
   await requireRole("admin", "im");
 
   const sp = await searchParams;
@@ -31,88 +41,94 @@ export default async function PeoplePage({
     store.list("hubs"),
   ]);
 
-  // Active hubs are available when adding/editing people.
-  const hubs = allHubs
-    .filter((hub) => hub.active !== "false")
-    .sort((a, b) => a.name.localeCompare(b.name));
-
   const sortedPeople = [...people].sort((a, b) =>
     a.name.localeCompare(b.name)
   );
 
-  // Use all hubs for filtering so people linked to inactive
-  // hubs can still be found.
+  const sortedHubs = [...allHubs].sort((a, b) =>
+    a.name.localeCompare(b.name)
+  );
+
+  // Only active hubs are offered for adding/editing people,
+  // preserving the behaviour of your original page.
+  const activeHubs = sortedHubs.filter(
+    (hub) => hub.active !== "false"
+  );
+
+  // Include all hubs when resolving existing people's cities.
   const hubById = new Map(
     allHubs.map((hub) => [hub.hub_id, hub])
   );
 
-  // Read the filters from the page URL.
+  // Read filters from the URL.
   const requestedRole = normalize(one(sp.role));
 
-  const roleFilter = Object.prototype.hasOwnProperty.call(
-    ROLE_LABELS,
-    requestedRole
-  )
+  const selectedRole = isPersonRole(requestedRole)
     ? requestedRole
     : "";
 
-  const cityFilter = normalize(one(sp.city));
+  const selectedCity = normalize(one(sp.city));
 
   /*
-   * Build a unique city dropdown.
-   * Prefer the hub's city; fall back to its name when city is blank.
+   * City is taken from the person's assigned hub.
+   * If hub.city is blank, use the hub name.
    */
-  const cityLabels = new Map<string, string>();
+  function cityForHub(hubId: string): string {
+    const hub = hubById.get(hubId);
 
-  for (const hub of allHubs) {
-    const label = (hub.city ?? "").trim() || hub.name.trim();
-    const key = normalize(label);
+    if (!hub) return "";
 
-    if (key && !cityLabels.has(key)) {
-      cityLabels.set(key, label);
+    return (hub.city ?? "").trim() || hub.name.trim();
+  }
+
+  // Build a case-insensitive, de-duplicated list of cities.
+  const cityMap = new Map<string, string>();
+
+  for (const hub of sortedHubs) {
+    const label =
+      (hub.city ?? "").trim() || hub.name.trim();
+
+    const value = normalize(label);
+
+    if (value && !cityMap.has(value)) {
+      cityMap.set(value, label);
     }
   }
 
-  const cityOptions = [...cityLabels.entries()]
+  const cityOptions = [...cityMap.entries()]
     .map(([value, label]) => ({ value, label }))
     .sort((a, b) => a.label.localeCompare(b.label));
 
-  const selectedCityKnown =
-    !cityFilter || cityLabels.has(cityFilter);
-
-  // Apply both filters together.
+  // Both selected filters must match.
   const filteredPeople = sortedPeople.filter((person) => {
-    const assignedHub = hubById.get(person.hub);
+    const roleMatches =
+      !selectedRole || person.role === selectedRole;
 
-    const personCity = assignedHub
-      ? normalize(
-          (assignedHub.city ?? "").trim() ||
-            assignedHub.name
-        )
-      : "";
+    const cityMatches =
+      !selectedCity ||
+      normalize(cityForHub(person.hub)) === selectedCity;
 
-    const matchesRole =
-      !roleFilter || person.role === roleFilter;
-
-    const matchesCity =
-      !cityFilter || personCity === cityFilter;
-
-    return matchesRole && matchesCity;
+    return roleMatches && cityMatches;
   });
 
-  const hasFilters = Boolean(roleFilter || cityFilter);
+  const hasFilters = Boolean(selectedRole || selectedCity);
 
-  // Default the Add person hub dropdown to Bangalore when available.
+  const unknownCity =
+    Boolean(selectedCity) && !cityMap.has(selectedCity);
+
+  // Find the actual Bangalore hub ID instead of assuming it.
   const bangaloreHub =
-    hubs.find(
+    activeHubs.find(
       (hub) => normalize(hub.hub_id) === "bangalore"
     ) ??
-    hubs.find(
+    activeHubs.find(
       (hub) => normalize(hub.name) === "bangalore"
     );
 
   const defaultHubId =
-    bangaloreHub?.hub_id ?? hubs[0]?.hub_id ?? "";
+    bangaloreHub?.hub_id ??
+    activeHubs[0]?.hub_id ??
+    "";
 
   return (
     <main className={styles.page}>
@@ -123,33 +139,189 @@ export default async function PeoplePage({
       <h1>People</h1>
 
       <p className={styles.muted}>
-        {people.length} people. Email is required when adding a
-        person. Use their Google login email to link their account.
-        Deactivate instead of deleting so history stays intact.
+        {people.length} people. Email is required when adding
+        a person. Use their Google login email to link their
+        account. Deactivate instead of deleting so history
+        stays intact.
       </p>
 
       {one(sp.error) && (
         <p className={styles.error}>
-          Please check the name, role and hub, and enter a valid
-          email address. Email cannot be blank.
+          Please check the name, role and hub, and enter a
+          valid email address. Email cannot be blank.
         </p>
       )}
 
-      {/* Existing bulk import remains unchanged. */}
+      {/* FILTERS: always visible directly below the heading. */}
+      <section
+        aria-label="Filter people"
+        style={{
+          display: "block",
+          marginTop: 20,
+          marginBottom: 24,
+          padding: 18,
+          border: "1px solid #cbd5e1",
+          borderRadius: 10,
+          backgroundColor: "#f8fafc",
+          color: "#0f172a",
+        }}
+      >
+        <h2
+          style={{
+            margin: "0 0 14px",
+            fontSize: 18,
+          }}
+        >
+          Filter people
+        </h2>
+
+        <form
+          action="/admin/people"
+          method="get"
+          key={`${selectedRole}:${selectedCity}`}
+          style={{
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "flex-end",
+            gap: 14,
+          }}
+        >
+          {/* Role filter does not change a person's saved role. */}
+          <label
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 6,
+              flex: "1 1 180px",
+              minWidth: 0,
+            }}
+          >
+            <span style={{ fontWeight: 600 }}>Role</span>
+
+            <select
+              name="role"
+              defaultValue={selectedRole}
+              style={{
+                width: "100%",
+                padding: "10px 12px",
+                border: "1px solid #94a3b8",
+                borderRadius: 6,
+                backgroundColor: "#ffffff",
+                color: "#0f172a",
+              }}
+            >
+              <option value="">All roles</option>
+              <option value="im">IM</option>
+              <option value="ifo">IFO</option>
+              <option value="fo">FO</option>
+              <option value="rig">Rig</option>
+            </select>
+          </label>
+
+          {/* City options come from the hubs collection. */}
+          <label
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 6,
+              flex: "1 1 180px",
+              minWidth: 0,
+            }}
+          >
+            <span style={{ fontWeight: 600 }}>City</span>
+
+            <select
+              name="city"
+              defaultValue={selectedCity}
+              style={{
+                width: "100%",
+                padding: "10px 12px",
+                border: "1px solid #94a3b8",
+                borderRadius: 6,
+                backgroundColor: "#ffffff",
+                color: "#0f172a",
+              }}
+            >
+              <option value="">All cities</option>
+
+              {/* Preserve an unavailable city supplied in the URL. */}
+              {unknownCity && (
+                <option value={selectedCity}>
+                  {one(sp.city)} — unavailable
+                </option>
+              )}
+
+              {cityOptions.map((city) => (
+                <option
+                  key={city.value}
+                  value={city.value}
+                >
+                  {city.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <button
+            type="submit"
+            style={{
+              padding: "10px 16px",
+              border: 0,
+              borderRadius: 6,
+              backgroundColor: "#0f172a",
+              color: "#ffffff",
+              fontWeight: 600,
+              cursor: "pointer",
+            }}
+          >
+            Apply filters
+          </button>
+
+          {hasFilters && (
+            <Link
+              href="/admin/people"
+              style={{
+                padding: "10px 0",
+                color: "#1d4ed8",
+                textDecoration: "underline",
+              }}
+            >
+              Clear filters
+            </Link>
+          )}
+        </form>
+
+        <p
+          style={{
+            margin: "14px 0 0",
+            fontSize: 14,
+          }}
+        >
+          Showing <strong>{filteredPeople.length}</strong>{" "}
+          of <strong>{people.length}</strong> people.
+          City is based on each person&apos;s assigned hub;
+          the hub name is used when its city is blank.
+        </p>
+      </section>
+
+      {/* Existing bulk import, separate from the filter form. */}
       <details className={styles.details}>
         <summary>Bulk import from a spreadsheet</summary>
 
         <p className={styles.muted}>
-          Paste cells copied from Excel or Google Sheets, or upload
-          a CSV. Columns: Name, Role (IM, IFO, FO, Rig), Hub, Email,
-          with the header in the first row. People who already
-          exist (same name and hub) are skipped.
+          Paste cells copied from Excel or Google Sheets, or
+          upload a CSV. Columns: Name, Role (IM, IFO, FO, Rig),
+          Hub, Email, with the header in the first row.
+          People who already exist (same name and hub) are
+          skipped.
         </p>
 
         <ImportForm />
       </details>
 
-      {/* Add person form is separate from the filter form. */}
+      {/* Add person: filters do not alter these input values. */}
+      <h2>Add person</h2>
+
       <form action={addPerson} className={styles.row}>
         <input
           name="name"
@@ -166,11 +338,13 @@ export default async function PeoplePage({
           aria-label="New person's role"
           required
         >
-          {Object.entries(ROLE_LABELS).map(([value, label]) => (
-            <option key={value} value={value}>
-              {label}
-            </option>
-          ))}
+          {Object.entries(ROLE_LABELS).map(
+            ([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            )
+          )}
         </select>
 
         <select
@@ -179,12 +353,17 @@ export default async function PeoplePage({
           aria-label="New person's hub"
           required
         >
-          {hubs.length === 0 && (
-            <option value="">No active hubs available</option>
+          {activeHubs.length === 0 && (
+            <option value="">
+              No active hubs available
+            </option>
           )}
 
-          {hubs.map((hub) => (
-            <option key={hub.hub_id} value={hub.hub_id}>
+          {activeHubs.map((hub) => (
+            <option
+              key={hub.hub_id}
+              value={hub.hub_id}
+            >
               {hub.name}
             </option>
           ))}
@@ -199,96 +378,22 @@ export default async function PeoplePage({
           required
         />
 
-        <button type="submit" disabled={hubs.length === 0}>
+        <button
+          type="submit"
+          disabled={activeHubs.length === 0}
+        >
           Add person
         </button>
       </form>
 
-      {/* NEW: Role and City filters for the people list. */}
-      <section
-        aria-label="Filter people"
-        style={{
-          marginTop: 24,
-          marginBottom: 20,
-          paddingTop: 16,
-          borderTop: "1px solid #cbd5e1",
-        }}
-      >
-        <h2>Filter people</h2>
+      {/* Render only the people matching the selected filters. */}
+      <h2 style={{ marginTop: 24 }}>People list</h2>
 
-        <form
-          action="/admin/people"
-          method="get"
-          className={styles.row}
-          key={`${roleFilter}:${cityFilter}`}
-        >
-          <label
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 6,
-            }}
-          >
-            <span>Role</span>
-
-            <select name="role" defaultValue={roleFilter}>
-              <option value="">All roles</option>
-              <option value="im">IM</option>
-              <option value="ifo">IFO</option>
-              <option value="fo">FO</option>
-              <option value="rig">Rig</option>
-            </select>
-          </label>
-
-          <label
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 6,
-            }}
-          >
-            <span>City</span>
-
-            <select name="city" defaultValue={cityFilter}>
-              <option value="">All cities</option>
-
-              {/* Preserve an unknown URL filter without silently
-                  displaying a different selection. */}
-              {!selectedCityKnown && (
-                <option value={cityFilter}>
-                  {one(sp.city)} — unavailable
-                </option>
-              )}
-
-              {cityOptions.map((city) => (
-                <option key={city.value} value={city.value}>
-                  {city.label}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <button type="submit">Apply filters</button>
-
-          {hasFilters && (
-            <Link href="/admin/people">
-              Clear filters
-            </Link>
-          )}
-        </form>
-
-        <p className={styles.muted}>
-          Showing {filteredPeople.length} of {people.length} people.
-          City is based on the assigned hub.
-        </p>
-      </section>
-
-      {/* Display only matching people. */}
       <div className={styles.list}>
         {filteredPeople.length === 0 ? (
           <p className={styles.muted}>
             {hasFilters
-              ? "No people match the selected role and city."
+              ? "No people match the selected role and city. Change the filters or click Clear filters."
               : "No people have been added yet."}
           </p>
         ) : (
@@ -296,7 +401,7 @@ export default async function PeoplePage({
             <PersonRow
               key={person.person_id}
               person={person}
-              hubs={hubs}
+              hubs={activeHubs}
             />
           ))
         )}
