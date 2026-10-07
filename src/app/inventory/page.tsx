@@ -8,6 +8,7 @@ import { formatPrice, summarizeBatch } from "@/lib/receipt";
 import { getStore } from "@/lib/store";
 import { formatIst } from "@/lib/time";
 import styles from "../../form.module.css";
+import PrintButton from "../handover/receipt/[batch]/PrintButton";
 
 const ACTION_TITLE: Record<string, string> = {
   check_out: "Handover receipt",
