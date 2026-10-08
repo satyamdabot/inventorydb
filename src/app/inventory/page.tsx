@@ -29,7 +29,7 @@ const inputStyle: CSSProperties = {
   padding: "10px 12px",
 };
 
-// Display the fixed penalty.
+// Fixed penalty display.
 // The server independently calculates the amount before saving.
 function penaltyForCapacity(capacity: string): string {
   if (capacity === "256 GB") return "10000";
@@ -65,7 +65,8 @@ export default function AddCardForm({
   const [note, setNote] = useState("");
 
   const [lookingUp, setLookingUp] = useState(false);
-  const [waitingToLookup, setWaitingToLookup] = useState(false);
+  const [waitingToLookup, setWaitingToLookup] =
+    useState(false);
 
   const requestId = useRef(0);
   const lastSuccessfulSerial = useRef("");
@@ -76,23 +77,10 @@ export default function AddCardForm({
   >(null);
 
   const lookupBusy = lookingUp || waitingToLookup;
-
-  // Derive the amount directly from storage.
   const price = penaltyForCapacity(capacity);
 
-  // Prefer the canonical ID; otherwise match the displayed hub name.
-  // The parent Inventory page supplies active hubs.
-  const bangaloreHub =
-    hubs.find(
-      (hub) =>
-        hub.hub_id.trim().toLowerCase() === "bangalore"
-    ) ??
-    hubs.find(
-      (hub) =>
-        hub.name.trim().toLowerCase() === "bangalore"
-    );
+  // No Bangalore lookup or automatic hub selection.
 
-  // Cancel scheduled work and ignore responses after unmount.
   useEffect(() => {
     return () => {
       if (lookupTimer.current !== null) {
@@ -100,6 +88,7 @@ export default function AddCardForm({
         lookupTimer.current = null;
       }
 
+      // Ignore any response arriving after unmount.
       requestId.current += 1;
       activeLookupSerial.current = "";
     };
@@ -125,7 +114,7 @@ export default function AddCardForm({
   function changeSerial(value: string) {
     cancelScheduledLookup();
 
-    // Invalidate the previous serial's pending lookup.
+    // Prevent an old lookup from filling a different serial.
     requestId.current += 1;
     lastSuccessfulSerial.current = "";
     activeLookupSerial.current = "";
@@ -141,7 +130,7 @@ export default function AddCardForm({
 
     setWaitingToLookup(true);
 
-    // Automatically fetch after a typing/scanning pause.
+    // Fetch automatically after typing/scanning pauses.
     lookupTimer.current = setTimeout(() => {
       lookupTimer.current = null;
       void lookup(trimmed);
@@ -163,10 +152,12 @@ export default function AddCardForm({
 
     const normalized = trimmed.toLowerCase();
 
-    // Avoid duplicate concurrent requests for the same serial.
-    if (activeLookupSerial.current === normalized) return;
+    if (activeLookupSerial.current === normalized) {
+      return;
+    }
 
-    // Preserve manual edits unless the user explicitly fetches again.
+    // Preserve manual edits after a successful lookup.
+    // Fetch details can explicitly refresh those values.
     if (
       !force &&
       lastSuccessfulSerial.current === normalized
@@ -183,7 +174,9 @@ export default function AddCardForm({
     try {
       const found = await lookupAsset(trimmed);
 
-      if (currentRequest !== requestId.current) return;
+      if (currentRequest !== requestId.current) {
+        return;
+      }
 
       if (!found) {
         lastSuccessfulSerial.current = "";
@@ -228,10 +221,12 @@ export default function AddCardForm({
           ? `Asset found. Missing details: ${missing.join(
               ", "
             )}. Enter these manually. Penalty is calculated from storage.`
-          : "Card details loaded. Review the home hub and click Add item."
+          : "Card details loaded. Choose the home hub and review the details before saving."
       );
     } catch {
-      if (currentRequest !== requestId.current) return;
+      if (currentRequest !== requestId.current) {
+        return;
+      }
 
       lastSuccessfulSerial.current = "";
       clearDetails();
@@ -252,7 +247,7 @@ export default function AddCardForm({
       action={addItem}
       aria-label="Add inventory item"
       onSubmit={(event) => {
-        // Block mouse and keyboard submissions during lookup.
+        // Block submissions while lookup is queued or running.
         if (
           lookupTimer.current !== null ||
           activeLookupSerial.current ||
@@ -305,35 +300,26 @@ export default function AddCardForm({
           />
         </label>
 
-        {/* Bangalore is selected by default.
-            Dropdown remains editable and has no required attribute.
-            A blank submission uses Bangalore on the server. */}
+        {/* No default hub and no automatic Bangalore selection. */}
         <label style={fieldStyle}>
           <span>Home hub</span>
 
           <select
             name="homeHub"
-            defaultValue={bangaloreHub?.hub_id ?? ""}
+            defaultValue=""
             style={inputStyle}
           >
-            <option value="">
-              {bangaloreHub
-                ? "Use default: Bangalore"
-                : "Select home hub — Bangalore unavailable"}
-            </option>
+            <option value="">Select home hub</option>
 
             {hubs.map((hub) => (
-              <option key={hub.hub_id} value={hub.hub_id}>
+              <option
+                key={hub.hub_id}
+                value={hub.hub_id}
+              >
                 {hub.name}
               </option>
             ))}
           </select>
-
-          <small className={styles.muted}>
-            {bangaloreHub
-              ? "Defaults to Bangalore. Choose another hub if needed."
-              : "The default Bangalore hub is unavailable. Select another hub."}
-          </small>
         </label>
 
         <label style={fieldStyle}>
@@ -381,7 +367,6 @@ export default function AddCardForm({
           />
         </label>
 
-        {/* Storage is required because it determines the penalty. */}
         <label style={fieldStyle}>
           <span>Storage of card *</span>
 
@@ -419,7 +404,6 @@ export default function AddCardForm({
           </select>
         </label>
 
-        {/* Fixed amount, not manually editable. */}
         <label style={fieldStyle}>
           <span>Penalty amount (₹)</span>
 
