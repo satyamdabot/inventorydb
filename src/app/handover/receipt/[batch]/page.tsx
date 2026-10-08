@@ -85,10 +85,10 @@ export default async function ReceiptPage({
           }}
         >
           <div style={{ minWidth: 0 }}>
-            {/* LOGO: save the official image at public/instawork-logo.png. */}
+                       {/* LOGO: public/instawork.svg */}
             {/* eslint-disable-next-line @next/next/no-img-element -- local receipt logo */}
             <img
-              src="/instawork-logo.png"
+              src="/instawork.svg"
               alt="Instawork"
               width={180}
               height={48}
