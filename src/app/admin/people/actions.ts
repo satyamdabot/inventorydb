@@ -6,76 +6,180 @@ import { redirect } from "next/navigation";
 import { z } from "zod";
 import { requireRole } from "@/lib/authz";
 import { getStore } from "@/lib/store";
-import { peopleUrl } from "./filters";
 
-// Email is required, and no two people may share one (it is how a login is linked to a person).
+// Email is required for both adding and editing.
 const PersonInput = z.object({
   name: z.string().trim().min(1).max(80),
   role: z.enum(["im", "ifo", "fo", "rig"]),
-  hub: z.string().min(1),
-  email: z.email(),
+  hub: z.string().trim().min(1),
+  email: z.email("Enter a valid email address"),
 });
 
-function parse(formData: FormData) {
+function normalizeEmail(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function parsePerson(formData: FormData) {
   return PersonInput.safeParse({
-    name: formData.get("name"),
-    role: formData.get("role"),
-    hub: formData.get("hub"),
-    email: String(formData.get("email") ?? "").trim().toLowerCase(),
+    name: String(formData.get("name") ?? ""),
+    role: String(formData.get("role") ?? ""),
+    hub: String(formData.get("hub") ?? ""),
+    email: normalizeEmail(
+      String(formData.get("email") ?? "")
+    ),
   });
 }
 
-/** Checks a person's details against the sheet. Returns an error code, or "" when they can be saved. */
-async function check(formData: FormData, personId?: string) {
-  const parsed = parse(formData);
-  if (!parsed.success) return { code: "invalid" } as const;
-  const store = getStore();
-  const [hubs, people] = await Promise.all([store.list("hubs"), store.list("people")]);
-  if (!hubs.some((h) => h.hub_id === parsed.data.hub)) return { code: "invalid" } as const;
-  if (personId && !people.some((p) => p.person_id === personId)) return { code: "person_not_found" } as const;
-  const taken = people.some((p) => p.person_id !== personId && p.linked_user.trim().toLowerCase() === parsed.data.email);
-  if (taken) return { code: "email_exists" } as const;
-  return { code: "", data: parsed.data } as const;
+function fail(
+  error: "invalid" | "email_exists" | "person_not_found"
+): never {
+  redirect(
+    `/admin/people?${new URLSearchParams({ error })}`
+  );
 }
 
+function refreshPeoplePages() {
+  revalidatePath("/admin/people");
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/analytics");
+  revalidatePath("/dashboard/my");
+  revalidatePath("/inventory");
+  revalidatePath("/handover/send");
+  revalidatePath("/handover/receive");
+}
+
+/**
+ * ADD PERSON
+ * Admin and IM only.
+ * Check email against all people, including inactive records.
+ */
 export async function addPerson(formData: FormData) {
   await requireRole("admin", "im");
-  const keep = String(formData.get("keep") ?? "");
-  const result = await check(formData);
-  if (!result.data) redirect(peopleUrl(keep, { error: result.code }));
 
-  await getStore().upsert("people", [
+  const parsed = parsePerson(formData);
+
+  if (!parsed.success) {
+    fail("invalid");
+  }
+
+  const input = parsed.data;
+  const store = getStore();
+
+  const [people, hubs] = await Promise.all([
+    store.list("people"),
+    store.list("hubs"),
+  ]);
+
+  const validHub = hubs.some(
+    (hub) =>
+      hub.hub_id === input.hub &&
+      hub.active !== "false"
+  );
+
+  if (!validHub) {
+    fail("invalid");
+  }
+
+  // Ignore letter case and surrounding spaces.
+  const duplicateEmail = people.some(
+    (person) =>
+      normalizeEmail(person.linked_user ?? "") ===
+      input.email
+  );
+
+  if (duplicateEmail) {
+    fail("email_exists");
+  }
+
+  await store.upsert("people", [
     {
-      person_id: `p-${randomUUID().slice(0, 8)}`,
-      name: result.data.name,
-      role: result.data.role,
-      hub: result.data.hub,
-      linked_user: result.data.email,
+      person_id: `p-${randomUUID()}`,
+      name: input.name,
+      role: input.role,
+      hub: input.hub,
+      linked_user: input.email,
       active: "true",
     },
   ]);
-  revalidatePath("/admin/people");
-  redirect(peopleUrl(keep, { done: "added" }));
+
+  refreshPeoplePages();
+  redirect("/admin/people?done=added");
 }
 
-// person_id never changes, so past events keep pointing at the right person after edits.
+/**
+ * SAVE PERSON
+ * Preserve person_id so existing history remains linked.
+ * A person can retain their own email.
+ */
 export async function savePerson(formData: FormData) {
   await requireRole("admin", "im");
-  const keep = String(formData.get("keep") ?? "");
-  const person_id = String(formData.get("person_id") ?? "");
-  const result = await check(formData, person_id || "-");
-  if (!result.data) redirect(peopleUrl(keep, { error: result.code }));
 
-  await getStore().upsert("people", [
+  const personId = String(
+    formData.get("person_id") ?? ""
+  ).trim();
+
+  const parsed = parsePerson(formData);
+
+  if (!personId || !parsed.success) {
+    fail("invalid");
+  }
+
+  const input = parsed.data;
+  const store = getStore();
+
+  const [people, hubs] = await Promise.all([
+    store.list("people"),
+    store.list("hubs"),
+  ]);
+
+  const existing = people.find(
+    (person) => person.person_id === personId
+  );
+
+  if (!existing) {
+    fail("person_not_found");
+  }
+
+  // Existing inactive hub assignments may be retained.
+  // New assignments must use an active hub.
+  const validHub = hubs.some(
+    (hub) =>
+      hub.hub_id === input.hub &&
+      (
+        hub.active !== "false" ||
+        existing.hub === input.hub
+      )
+  );
+
+  if (!validHub) {
+    fail("invalid");
+  }
+
+  const duplicateEmail = people.some(
+    (person) =>
+      person.person_id !== personId &&
+      normalizeEmail(person.linked_user ?? "") ===
+        input.email
+  );
+
+  if (duplicateEmail) {
+    fail("email_exists");
+  }
+
+  await store.upsert("people", [
     {
-      person_id,
-      name: result.data.name,
-      role: result.data.role,
-      hub: result.data.hub,
-      linked_user: result.data.email,
-      active: formData.get("active") === "on" ? "true" : "false",
+      person_id: personId,
+      name: input.name,
+      role: input.role,
+      hub: input.hub,
+      linked_user: input.email,
+      active:
+        formData.get("active") === "on"
+          ? "true"
+          : "false",
     },
   ]);
-  revalidatePath("/admin/people");
-  redirect(peopleUrl(keep, { done: "saved" }));
+
+  refreshPeoplePages();
+  redirect("/admin/people?done=saved");
 }
