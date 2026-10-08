@@ -1,337 +1,136 @@
 "use server";
 
 import { randomUUID } from "node:crypto";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { revalidatePath } from "next/cache";
-import { planAddItem } from "@/lib/add-item";
-import {
-  findAsset,
-  normalizeCapacity,
-} from "@/lib/asset-lookup";
-import { loadAssetRecords } from "@/lib/asset-sheet";
+import { after } from "next/server";
+import { actorOptions, allowedActors, defaultActor, resolveActor } from "@/lib/actors";
 import { requireRole } from "@/lib/authz";
-import { planCorrection } from "@/lib/correction";
+import { planReceive, planSend, type HandoverContext, type HandoverPlan } from "@/lib/handover";
+import type { Item } from "@/lib/schema";
+import { collectIds } from "@/lib/scan";
+import { archiveReceipt } from "@/lib/receipt-archive";
 import { getStore } from "@/lib/store";
 import { istTimestamp } from "@/lib/time";
 
-// Only redirect to inventory pages.
-const SAFE_BACK = /^\/inventory(\/[A-Za-z0-9_-]+)?$/;
+// The site's own address, used for the QR code link inside the archived PDF.
+async function siteUrl() {
+  const h = await headers();
+  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
+  const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
+  return `${proto}://${host}`;
+}
 
-function backTo(
+const go = (path: string, params: Record<string, string>) => `${path}?${new URLSearchParams(params)}`;
+
+// Shared by both flows: collect the scanned cards, plan, save all-or-nothing, redirect with the result.
+async function run(
+  formData: FormData,
   path: string,
-  params: Record<string, string>
-): string {
-  return `${path}?${new URLSearchParams(params)}`;
-}
-
-// Fixed penalty based on storage.
-function penaltyForCapacity(capacity: string): string {
-  if (capacity === "256 GB") return "10000";
-  if (capacity === "512 GB") return "20000";
-  return "";
-}
-
-function refreshInventoryPages() {
-  revalidatePath("/inventory");
-  revalidatePath("/inventory/[id]", "page");
-  revalidatePath("/dashboard");
-  revalidatePath("/dashboard/analytics");
-  revalidatePath("/dashboard/my");
-  revalidatePath("/dashboard/hub/[id]", "page");
-}
-
-/**
- * CORRECTIONS: Admin only.
- * IM and Rig do not gain correction permission.
- */
-export async function applyCorrection(formData: FormData) {
-  const user = await requireRole("admin");
-
-  const backRaw = String(formData.get("back") ?? "");
-  const back = SAFE_BACK.test(backRaw)
-    ? backRaw
-    : "/inventory";
-
-  const scanned = String(formData.get("scanned") ?? "")
-    .split(/[\s,]+/);
-
-  const ids = [
-    ...new Set(
-      [...formData.getAll("ids").map(String), ...scanned]
-        .map((id) => id.trim())
-        .filter(Boolean)
-    ),
-  ];
-
-  if (!ids.length) {
-    redirect(
-      backTo(back, {
-        error: "Tick or scan at least one item.",
-      })
-    );
-  }
+  build: (targets: Item[], ctx: HandoverContext) => HandoverPlan | Promise<HandoverPlan>,
+  summary: (plan: HandoverPlan) => Record<string, string>,
+  onSaved?: (plan: HandoverPlan) => void | Promise<void>,
+) {  const user = await requireRole("admin", "im", "rig");
+  const ids = collectIds(String(formData.get("scanned") ?? ""), formData.getAll("ids").map(String));
+  if (!ids.length) redirect(go(path, { error: "Scan or tick at least one item." }));
 
   const store = getStore();
-
-  const [found, hubs, people] = await Promise.all([
+  const [found, hubs, people, users] = await Promise.all([
     store.getItemsByIds(ids),
     store.list("hubs"),
     store.list("people"),
+    store.list("users"),
   ]);
 
-  const missing = ids.filter((id) => !found.has(id));
-
-  if (missing.length) {
-    const shown = missing.slice(0, 5).join(", ");
-
+  // Who is recording the handover (Sent by / Received by). Only an admin may name someone else; anyone
+  // else is always recorded as themselves, whatever the form says. The signed-in account is saved separately.
+  const hubName = new Map(hubs.map((h) => [h.hub_id, h.name]));
+  const isAdmin = user.role === "admin";
+  const actor = resolveActor(
+    isAdmin ? String(formData.get("by") ?? "") || defaultActor(user) : defaultActor(user),
+    allowedActors(user, actorOptions(people, users, (id) => hubName.get(id) ?? id)),
+  );
+  if (!actor) {
     redirect(
-      backTo(back, {
-        error: `Not found: ${shown}${
-          missing.length > 5
-            ? ` and ${missing.length - 5} more`
-            : ""
-        }. Nothing was saved.`,
-      })
+      go(path, {
+        error: isAdmin
+          ? "Choose an IM or admin for who is recording this handover."
+          : "Your login is not linked to an active IM or rig team member. Ask an admin to link you on the Users screen.",
+      }),
     );
   }
 
-  // Different spellings of the same stored serial count once.
-  const targets = [
-    ...new Map(
-      ids.map((id) => [
-        found.get(id)!.item_id,
-        found.get(id)!,
-      ])
-    ).values(),
-  ];
+  const missing = ids.filter((id) => !found.has(id));
+  if (missing.length) {
+    const shown = missing.slice(0, 5).join(", ");
+    redirect(go(path, { error: `Not found: ${shown}${missing.length > 5 ? ` and ${missing.length - 5} more` : ""}. Nothing was saved.` }));
+  }
 
-  const plan = planCorrection(
+  // Two spellings of the same card (SD-1 and sd-1) count once, and the stored serial is what gets used.
+  const targets = [...new Map(ids.map((id) => [found.get(id)!.item_id, found.get(id)!])).values()];
+
+  const plan = await build(
     targets,
-    {
-      status: String(formData.get("status") ?? ""),
-      hub: String(formData.get("hub") ?? ""),
-      holder: String(formData.get("holder") ?? ""),
-      homeHub: String(formData.get("homeHub") ?? ""),
-      note: String(formData.get("note") ?? ""),
-    },
     {
       hubs,
       people,
+      actorPersonId: actor,
       by: user.email ?? "unknown",
       now: istTimestamp(),
-      newId: (prefix) =>
-        `${prefix}-${randomUUID().slice(0, 8)}`,
-    }
+      newId: (prefix) => `${prefix}-${randomUUID().slice(0, 8)}`,
+    },
   );
+  if (plan.errors.length) redirect(go(path, { error: `${plan.errors.join(" ")} Nothing was saved.` }));
 
-  if (plan.errors.length) {
-    redirect(
-      backTo(back, {
-        error: `${plan.errors.join(" ")} Nothing was saved.`,
-      })
-    );
-  }
-
-  if (plan.items.length) {
-    await store.commitBatch(plan.events, plan.items);
-    refreshInventoryPages();
-  }
-
-  redirect(
-    backTo(back, {
-      done: String(plan.items.length),
-      same: String(plan.unchanged.length),
-    })
-  );
+  await store.commitBatch(plan.events, plan.items);
+  if (onSaved) await onSaved(plan);
+  redirect(go(path, { done: String(plan.items.length), ...summary(plan) }));
 }
 
-/**
- * ADD ITEM: Admin, IM and Rig.
- *
- * Blank homeHub defaults to active Bangalore.
- * Store storage/colour in attributes and penalty in price.
- */
-export async function addItem(formData: FormData) {
-  const user = await requireRole("admin", "im", "rig");
-
-  const capacity = normalizeCapacity(
-    String(formData.get("capacity") ?? "")
-  );
-
-  const cardType = String(
-    formData.get("cardType") ?? ""
-  ).trim();
-
-  function reject(message: string): never {
-    redirect(
-      `/inventory?${new URLSearchParams({
-        addError: message,
-      })}`
-    );
-  }
-
-  if (!["256 GB", "512 GB"].includes(capacity)) {
-    reject(
-      "Select 256 GB or 512 GB to calculate the penalty."
-    );
-  }
-
-  if (
-    cardType &&
-    !["Black", "Green"].includes(cardType)
-  ) {
-    reject("Card type must be Black or Green.");
-  }
-
-  // Calculate on the server; ignore the submitted price.
-  const price = penaltyForCapacity(capacity);
-
+export async function sendCards(formData: FormData) {
+  // The person (or a typed "Internal" name) and the location are both required; planSend refuses the
+  // send if either is missing.
   const input = {
-    itemId: String(formData.get("itemId") ?? "").trim(),
-    homeHub: String(formData.get("homeHub") ?? "").trim(),
-    prismNo: String(formData.get("prismNo") ?? "").trim(),
-    brand: String(formData.get("brand") ?? "").trim(),
-    model: String(formData.get("model") ?? "").trim(),
-    price,
+    fromHub: String(formData.get("fromHub") ?? ""),
+    recipient: String(formData.get("recipient") ?? ""),
+    internalName: String(formData.get("internalName") ?? ""),
+    toHub: String(formData.get("hub") ?? ""),
+    note: String(formData.get("note") ?? ""),
   };
-
-  const store = getStore();
-
-  const [items, hubs] = await Promise.all([
-    store.list("items"),
-    store.list("hubs"),
-  ]);
-
-  const activeHubs = hubs.filter(
-    (hub) => hub.active !== "false"
-  );
-
-  // No manual hub selection is necessary when Bangalore exists.
-  if (!input.homeHub) {
-    const bangaloreHub =
-      activeHubs.find(
-        (hub) =>
-          hub.hub_id.trim().toLowerCase() === "bangalore"
-      ) ??
-      activeHubs.find(
-        (hub) =>
-          hub.name.trim().toLowerCase() === "bangalore"
-      );
-
-    if (!bangaloreHub) {
-      reject(
-        "The default Bangalore hub is unavailable. Please select another home hub."
-      );
-    }
-
-    input.homeHub = bangaloreHub.hub_id;
-  }
-
-  // Validate submitted values on the server, not only in the dropdown.
-  if (
-    !activeHubs.some(
-      (hub) => hub.hub_id === input.homeHub
-    )
-  ) {
-    reject("Please select a valid active home hub.");
-  }
-
-  // Preserve the existing item validation and creation plan.
-  const plan = planAddItem(input, items, {
-    hubs,
-    by: user.email ?? "unknown",
-    now: istTimestamp(),
-    newId: (prefix) =>
-      `${prefix}-${randomUUID().slice(0, 8)}`,
-  });
-
-  if (plan.errors.length) {
-    reject(plan.errors.join(" "));
-  }
-
-  const item = plan.item;
-  const event = plan.event;
-
-  if (!item || !event) {
-    reject(
-      "The item could not be prepared. Nothing was saved."
-    );
-  }
-
-  // Preserve attributes already generated by planAddItem.
-  let attributes: Record<string, unknown> = {};
-
-  if (item.attributes?.trim()) {
-    let parsed: unknown;
-
-    try {
-      parsed = JSON.parse(item.attributes);
-    } catch {
-      reject(
-        "Could not read item attributes. Nothing was saved."
-      );
-    }
-
-    // Keep redirects outside the JSON-parsing try/catch.
-    if (
-      parsed === null ||
-      typeof parsed !== "object" ||
-      Array.isArray(parsed)
-    ) {
-      reject(
-        "Invalid item attributes. Nothing was saved."
-      );
-    }
-
-    attributes = parsed as Record<string, unknown>;
-  }
-
-  const itemToSave = {
-    ...item,
-    price,
-    attributes: JSON.stringify({
-      ...attributes,
-      capacity,
-      card_type: cardType,
+  await run(
+    formData,
+    "/handover/send",
+    (targets, ctx) => planSend(targets, input, ctx),
+    (plan): Record<string, string> => ({
+      status: plan.items[0]?.status ?? "",
+      person: plan.items[0]?.current_holder ?? "",
+      hub: plan.items[0]?.current_hub ?? "",
+      batch: plan.events[0]?.batch_id ?? "",
     }),
-  };
-
-  await store.commitBatch([event], [itemToSave]);
-  refreshInventoryPages();
-
-  redirect(
-    `/inventory?${new URLSearchParams({
-      added: itemToSave.item_id,
-    })}`
+    async (plan) => {
+      // Save the receipt PDF to Drive and log it in the "Receipts" tab.
+      // This runs after the page has redirected, so the user never waits for it,
+      // and a Drive/Sheets problem cannot undo the handover that was just saved.
+      const batchId = plan.events[0]?.batch_id;
+      if (!batchId) return;
+      const base = await siteUrl();
+      after(() => archiveReceipt(batchId, base));
+    },
   );
 }
 
-/**
- * ASSET LOOKUP: Admin, IM and Rig.
- * Home hub is not fetched from the reference asset sheet.
- */
-export async function lookupAsset(serial: string) {
-  await requireRole("admin", "im", "rig");
-
-  const cleanedSerial = serial.trim();
-
-  if (!cleanedSerial) return null;
-
-  const records = await loadAssetRecords();
-  const found = findAsset(records, cleanedSerial);
-
-  if (!found) return null;
-
-  const capacity = normalizeCapacity(
-    found.capacity ?? ""
+export async function receiveCards(formData: FormData) {
+  const hub = String(formData.get("hub") ?? "");
+  const note = String(formData.get("note") ?? "");
+  const expectedRaw = String(formData.get("expected") ?? "").trim();
+  const expected = expectedRaw === "" ? undefined : Number(expectedRaw);
+  if (expected !== undefined && (!Number.isInteger(expected) || expected < 0)) {
+    redirect(go("/handover/receive", { error: "Expected count must be a whole number." }));
+  }
+  await run(
+    formData,
+    "/handover/receive",
+    (targets, ctx) => planReceive(targets, { hub, note, expected }, ctx),
+    (plan): Record<string, string> => (plan.mismatch ? { mismatch: plan.mismatch } : {}),
   );
-
-  return {
-    brand: found.brand,
-    model: found.model,
-    prismNo: found.prismNo,
-    capacity,
-    cardType: found.cardType ?? "",
-    price: penaltyForCapacity(capacity),
-  };
 }
