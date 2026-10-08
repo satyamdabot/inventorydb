@@ -29,19 +29,7 @@ const inputStyle: CSSProperties = {
   padding: "10px 12px",
 };
 
-// Display the fixed penalty.
-// The server independently calculates the amount before saving.
-function penaltyForCapacity(capacity: string): string {
-  if (capacity === "256 GB") return "10000";
-  if (capacity === "512 GB") return "20000";
-  return "";
-}
-
-function AddButton({
-  lookupBusy,
-}: {
-  lookupBusy: boolean;
-}) {
+function AddButton({ lookupBusy }: { lookupBusy: boolean }) {
   const { pending } = useFormStatus();
 
   return (
@@ -51,15 +39,12 @@ function AddButton({
   );
 }
 
-export default function AddCardForm({
-  hubs,
-}: {
-  hubs: Hubs;
-}) {
+export default function AddCardForm({ hubs }: { hubs: Hubs }) {
   const [serial, setSerial] = useState("");
   const [prismNo, setPrismNo] = useState("");
   const [brand, setBrand] = useState("");
   const [model, setModel] = useState("");
+  const [price, setPrice] = useState("");
   const [capacity, setCapacity] = useState("");
   const [cardType, setCardType] = useState("");
   const [note, setNote] = useState("");
@@ -67,27 +52,19 @@ export default function AddCardForm({
   const [lookingUp, setLookingUp] = useState(false);
   const [waitingToLookup, setWaitingToLookup] = useState(false);
 
+  // Track the latest request so older responses cannot overwrite it.
   const requestId = useRef(0);
   const lastSuccessfulSerial = useRef("");
   const activeLookupSerial = useRef("");
 
+  // Timer used to wait until typing/scanning pauses.
   const lookupTimer = useRef<
     ReturnType<typeof setTimeout> | null
   >(null);
 
   const lookupBusy = lookingUp || waitingToLookup;
 
-  // Derive the amount directly from storage.
-  const price = penaltyForCapacity(capacity);
-
-  // CHANGED: find Bangalore by display name only.
-  // No comparison against hub.hub_id is used here.
-  const bangaloreHub = hubs.find(
-    (hub) =>
-      hub.name.trim().toLowerCase() === "bangalore"
-  );
-
-  // Cancel scheduled work and ignore responses after unmount.
+  // Cancel queued work and invalidate requests when the form unmounts.
   useEffect(() => {
     return () => {
       if (lookupTimer.current !== null) {
@@ -104,6 +81,7 @@ export default function AddCardForm({
     setPrismNo("");
     setBrand("");
     setModel("");
+    setPrice("");
     setCapacity("");
     setCardType("");
   }
@@ -120,7 +98,7 @@ export default function AddCardForm({
   function changeSerial(value: string) {
     cancelScheduledLookup();
 
-    // Invalidate the previous serial's pending lookup.
+    // Ignore any response still loading for the previous serial.
     requestId.current += 1;
     lastSuccessfulSerial.current = "";
     activeLookupSerial.current = "";
@@ -128,25 +106,25 @@ export default function AddCardForm({
     setSerial(value);
     setLookingUp(false);
     clearDetails();
-    setNote("");
 
     const trimmed = value.trim();
 
-    if (!trimmed) return;
+    if (!trimmed) {
+      setNote("");
+      return;
+    }
 
     setWaitingToLookup(true);
+    setNote("");
 
-    // Automatically fetch after a typing/scanning pause.
+    // Automatically fetch 600ms after typing stops.
     lookupTimer.current = setTimeout(() => {
       lookupTimer.current = null;
       void lookup(trimmed);
     }, 600);
   }
 
-  async function lookup(
-    value: string,
-    force = false
-  ) {
+  async function lookup(value: string, force = false) {
     cancelScheduledLookup();
 
     const trimmed = value.trim();
@@ -158,10 +136,11 @@ export default function AddCardForm({
 
     const normalized = trimmed.toLowerCase();
 
-    // Avoid duplicate concurrent requests for the same serial.
+    // Avoid duplicate requests for the same card.
     if (activeLookupSerial.current === normalized) return;
 
-    // Preserve manual edits unless the user explicitly fetches again.
+    // Preserve manual edits after a successful automatic lookup.
+    // The Fetch details button explicitly allows fetching again.
     if (
       !force &&
       lastSuccessfulSerial.current === normalized
@@ -185,28 +164,18 @@ export default function AddCardForm({
         clearDetails();
 
         setNote(
-          "No matching Asset Tag found. Enter the details manually and select storage to calculate the penalty."
+          "No matching Asset Tag was found. Enter the card details manually."
         );
         return;
       }
 
-      const foundCapacity =
-        found.capacity === "256 GB" ||
-        found.capacity === "512 GB"
-          ? found.capacity
-          : "";
-
-      const foundCardType =
-        found.cardType === "Black" ||
-        found.cardType === "Green"
-          ? found.cardType
-          : "";
-
+      // Fill every field returned by the reference-sheet lookup.
       setPrismNo(found.prismNo ?? "");
       setBrand(found.brand ?? "");
       setModel(found.model ?? "");
-      setCapacity(foundCapacity);
-      setCardType(foundCardType);
+      setPrice(found.price ?? "");
+      setCapacity(found.capacity ?? "");
+      setCardType(found.cardType ?? "");
 
       lastSuccessfulSerial.current = normalized;
 
@@ -215,15 +184,16 @@ export default function AddCardForm({
       if (!found.prismNo) missing.push("Prism number");
       if (!found.brand) missing.push("brand");
       if (!found.model) missing.push("model");
-      if (!foundCapacity) missing.push("storage");
-      if (!foundCardType) missing.push("card colour");
+      if (!found.capacity) missing.push("storage");
+      if (!found.cardType) missing.push("card colour");
+      if (!found.price) missing.push("price");
 
       setNote(
         missing.length
           ? `Asset found. Missing details: ${missing.join(
               ", "
-            )}. Enter these manually. Penalty is calculated from storage.`
-          : "Card details loaded. Review the home hub and click Add item."
+            )}. You can enter them manually.`
+          : "All card details loaded. Select the home hub and click Add item."
       );
     } catch {
       if (currentRequest !== requestId.current) return;
@@ -247,7 +217,8 @@ export default function AddCardForm({
       action={addItem}
       aria-label="Add inventory item"
       onSubmit={(event) => {
-        // Block mouse and keyboard submissions during lookup.
+        // Do not save incomplete details while a lookup is queued
+        // or running, including submissions triggered by a keyboard.
         if (
           lookupTimer.current !== null ||
           activeLookupSerial.current ||
@@ -283,11 +254,13 @@ export default function AddCardForm({
               changeSerial(event.target.value)
             }
             onBlur={(event) => {
+              // Leaving the field fetches immediately.
               if (event.currentTarget.value.trim()) {
                 void lookup(event.currentTarget.value);
               }
             }}
             onKeyDown={(event) => {
+              // Scanners commonly send Enter after the Asset Tag.
               if (event.key === "Enter") {
                 event.preventDefault();
                 void lookup(event.currentTarget.value);
@@ -300,21 +273,18 @@ export default function AddCardForm({
           />
         </label>
 
-        {/* Default Bangalore by name.
-            Dropdown remains editable and has no required attribute.
-            The existing server action handles a blank hub selection. */}
+        {/* Home hub is selected manually, not returned by lookup. */}
         <label style={fieldStyle}>
-          <span>Home hub</span>
+          <span>Home hub *</span>
 
           <select
             name="homeHub"
-            defaultValue={bangaloreHub?.hub_id ?? ""}
+            defaultValue=""
+            required
             style={inputStyle}
           >
-            <option value="">
-              {bangaloreHub
-                ? "Use default: Bangalore"
-                : "Select home hub — Bangalore unavailable"}
+            <option value="" disabled>
+              Select home hub
             </option>
 
             {hubs.map((hub) => (
@@ -323,12 +293,6 @@ export default function AddCardForm({
               </option>
             ))}
           </select>
-
-          <small className={styles.muted}>
-            {bangaloreHub
-              ? "Defaults to Bangalore. Choose another hub if needed."
-              : "The default Bangalore hub is unavailable. Select another hub."}
-          </small>
         </label>
 
         <label style={fieldStyle}>
@@ -376,9 +340,8 @@ export default function AddCardForm({
           />
         </label>
 
-        {/* Storage determines the fixed penalty. */}
         <label style={fieldStyle}>
-          <span>Storage of card *</span>
+          <span>Storage of card</span>
 
           <select
             name="capacity"
@@ -387,7 +350,6 @@ export default function AddCardForm({
               setCapacity(event.target.value)
             }
             disabled={lookupBusy}
-            required
             style={inputStyle}
           >
             <option value="">Select storage</option>
@@ -414,22 +376,23 @@ export default function AddCardForm({
           </select>
         </label>
 
-        {/* Fixed amount, not manually editable. */}
         <label style={fieldStyle}>
-          <span>Penalty amount (₹)</span>
+          <span>Price / source penalty (₹)</span>
 
           <input
             name="price"
             type="number"
+            min="0"
+            step="0.01"
+            placeholder="Enter amount"
+            inputMode="decimal"
             value={price}
-            placeholder="Calculated from storage"
-            readOnly
+            onChange={(event) =>
+              setPrice(event.target.value)
+            }
+            readOnly={lookupBusy}
             style={inputStyle}
           />
-
-          <small className={styles.muted}>
-            256 GB: ₹10,000 · 512 GB: ₹20,000
-          </small>
         </label>
       </div>
 
@@ -441,6 +404,7 @@ export default function AddCardForm({
           alignItems: "center",
         }}
       >
+        {/* Optional manual retry; automatic lookup works without it. */}
         <button
           type="button"
           disabled={lookingUp || !serial.trim()}
@@ -465,7 +429,7 @@ export default function AddCardForm({
           : waitingToLookup
             ? "Waiting for typing or scanning to finish…"
             : note ||
-              "Enter an Asset Tag. Details load automatically. Review the card details before saving."}
+              "Enter an Asset Tag. Card details will load automatically; review them before saving."}
       </p>
     </form>
   );
