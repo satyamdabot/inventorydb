@@ -14,21 +14,49 @@ import { SummaryKpis } from "./summary-kpis";
 
 const inventory = (params: Record<string, string>) => `/inventory?${new URLSearchParams(params)}`;
 const days = (d: number | null) => (d === null ? "—" : d === 0 ? "today" : `${d}d`);
-const plural = (count: number, word: string) => `${n(count)} ${word}${count === 1 ? "" : "s"}`;
 
-interface Attention {
+// One row in the "Needs attention" table.
+interface AttentionRow {
   key: string;
-  text: string;
+  person: string;
+  role: string;
+  items: number;
+  outFor: string; // "14 hours", "3 days", "—"
+  issue: string;
   href: string;
   tone: "critical" | "warning" | "info";
 }
 const GLYPH = { critical: "✕", warning: "▲", info: "●" } as const;
 const TONE = { critical: styles.iconCritical, warning: styles.iconWarning, info: styles.iconMuted };
 
+// Label and inventory status for each late-group kind.
+const KIND_LABEL: Record<string, string> = {
+  fo: "Field officer",
+  ifo: "IFO",
+  rig: "Rig team",
+  im: "Inventory manager",
+  pending: "Hub",
+};
+const KIND_STATUS: Record<string, string> = {
+  fo: "with_fo",
+  ifo: "traveling",
+  rig: "with_rig",
+  im: "with_internal",
+};
+
 const STATUS_ORDER: Status[] = ["in_stock", "with_fo", "traveling", "with_rig", "with_internal", "pending", "lost", "damaged", "retired"];
 const HUB_BARS = 8;
-const LATE_LINES = 8; // late lines shown before "and N more"
-const HOLDER_ROWS = 7; // holder rows shown, by most cards held
+const LATE_LINES = 8; // late rows shown before "and N more"
+
+// Shared cell styles for the dark sticky table headers.
+const TH_STYLE: CSSProperties = { position: "sticky", top: 0, zIndex: 2, backgroundColor: "#1e293b", color: "#ffffff" };
+const TFOOT_STYLE: CSSProperties = {
+  position: "static",
+  borderTop: "2px solid #64748b",
+  backgroundColor: "#1e293b",
+  color: "#ffffff",
+  fontWeight: 700,
+};
 
 export default async function DashboardPage({ searchParams }: PageProps<"/dashboard">) {
   const user = await requireRole();
@@ -98,52 +126,89 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
     hubRows.push({ key: "other", label: `${rest.length} other hubs`, value: total, href: "/inventory", tip: `${rest.length} other hubs\n${n(total)} items` });
   }
 
-  // Plain sentences about what to look at, most useful first. Empty means all is well.
-  const attention: Attention[] = [];
-  // Late cards, oldest first: an FO who has not returned cards, an IFO whose cards have not arrived, and cards
-  // sent to a hub that nobody has received. One line per person or hub, so each says who to chase.
+  // Needs attention: one row per person (FO, IFO, rig team, IM) or hub holding items for more than
+  // LATE_AFTER_HOURS, oldest first, then lost / damaged / mismatched items. Empty means all is well.
   const howLong = (hours: number) => (hours < 48 ? `${Math.floor(hours)} hours` : `${Math.floor(hours / 24)} days`);
+  const attention: AttentionRow[] = [];
+  const seenPeople = new Set<string>();
+
   for (const g of d.late.slice(0, LATE_LINES)) {
-    if (g.kind === "pending") {
+    const kind = String(g.kind);
+    seenPeople.add(g.key);
+    if (kind === "pending") {
       attention.push({
         key: `late-pending-${g.key}`,
-        text: `${plural(g.count, "item")} sent to ${g.label} not received after ${LATE_AFTER_HOURS} hours, oldest ${howLong(g.oldestHours)}`,
+        person: g.label,
+        role: KIND_LABEL.pending,
+        items: g.count,
+        outFor: howLong(g.oldestHours),
+        issue: `Sent, not received after ${LATE_AFTER_HOURS}h`,
         href: `/handover/receive?${new URLSearchParams({ hub: g.key })}`,
         tone: "warning",
       });
     } else {
       attention.push({
-        key: `late-${g.kind}-${g.key}`,
-        text: `${g.label} (${g.kind === "fo" ? "FO" : "IFO"}) has ${plural(g.count, "item")} ${g.kind === "fo" ? "not returned" : "not arrived"} after ${LATE_AFTER_HOURS} hours, longest ${howLong(g.oldestHours)}`,
-        href: inventory({ holder: g.key, status: g.kind === "fo" ? "with_fo" : "traveling" }),
+        key: `late-${kind}-${g.key}`,
+        person: g.label,
+        role: KIND_LABEL[kind] ?? kind,
+        items: g.count,
+        outFor: howLong(g.oldestHours),
+        issue: kind === "ifo" ? `Not arrived after ${LATE_AFTER_HOURS}h` : `Not returned after ${LATE_AFTER_HOURS}h`,
+        href: inventory({ holder: g.key, status: KIND_STATUS[kind] ?? "" }),
         tone: "warning",
       });
     }
   }
+
+  // Rig team and IM holders are not part of d.late, so add them from the holders list (held ≥ 1 day).
+  for (const h of d.holders) {
+    const role = String(h.role ?? "");
+    if ((role !== "rig" && role !== "im") || seenPeople.has(h.person_id)) continue;
+    if (h.oldestDays === null || h.oldestDays < 1) continue;
+    attention.push({
+      key: `late-${role}-${h.person_id}`,
+      person: h.name,
+      role: ROLE_LABELS[role as keyof typeof ROLE_LABELS] ?? KIND_LABEL[role] ?? role,
+      items: h.count,
+      outFor: `${h.oldestDays} day${h.oldestDays === 1 ? "" : "s"}`,
+      issue: `Not returned after ${LATE_AFTER_HOURS}h`,
+      href: inventory({ holder: h.person_id, status: KIND_STATUS[role] }),
+      tone: "warning",
+    });
+  }
+
   if (d.late.length > LATE_LINES) {
     attention.push({
       key: "late-more",
-      text: `and ${d.late.length - LATE_LINES} more late`,
-      href: inventory({ status: "with_fo,traveling,pending" }),
+      person: `${d.late.length - LATE_LINES} more`,
+      role: "—",
+      items: d.late.slice(LATE_LINES).reduce((sum, g) => sum + g.count, 0),
+      outFor: "—",
+      issue: "Also late",
+      href: inventory({ status: "with_fo,traveling,pending,with_rig,with_internal" }),
       tone: "info",
     });
   }
-  if (s.lost + s.damaged > 0) {
-    attention.push({
-      key: "problem",
-      text: `${plural(s.lost, "item")} lost, ${plural(s.damaged, "item")} damaged`,
-      href: inventory({ status: "lost,damaged" }),
-      tone: "critical",
-    });
+  if (s.lost > 0) {
+    attention.push({ key: "lost", person: "—", role: "—", items: s.lost, outFor: "—", issue: "Lost", href: inventory({ status: "lost" }), tone: "critical" });
+  }
+  if (s.damaged > 0) {
+    attention.push({ key: "damaged", person: "—", role: "—", items: s.damaged, outFor: "—", issue: "Damaged", href: inventory({ status: "damaged" }), tone: "critical" });
   }
   if (d.inconsistencies.length > 0) {
     attention.push({
       key: "mismatch",
-      text: `${plural(d.inconsistencies.length, "item")} don't match their history`,
+      person: "—",
+      role: "—",
+      items: d.inconsistencies.length,
+      outFor: "—",
+      issue: "Doesn't match history",
       href: "/dashboard/analytics",
       tone: "critical",
     });
   }
+
+  const holdersTotal = d.holders.reduce((total, holder) => total + holder.count, 0);
 
   return (
     <div className={styles.root}>
@@ -266,12 +331,14 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
         </section>
 
         <div className={styles.grid2}>
-          <section className={styles.card} id="attention" aria-label="Needs attention">
+          {/* NEEDS ATTENTION — table */}
+          <section className={styles.card} id="attention" aria-label="Needs attention" style={{ minWidth: 0 }}>
             <h2>Needs attention</h2>
             <p className={styles.muted}>
-              Items with an FO or IFO, or sent to a hub, for more than {LATE_AFTER_HOURS} hours, plus lost, damaged and
-              mismatched items.
+              People (FO, IFO, rig team, IM) or hubs holding items for more than {LATE_AFTER_HOURS} hours, plus lost,
+              damaged and mismatched items.
             </p>
+
             {attention.length === 0 ? (
               <p className={styles.ok}>
                 <span className={`${styles.icon} ${styles.iconGood}`} aria-hidden>
@@ -280,194 +347,170 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
                 Nothing needs attention right now.
               </p>
             ) : (
-              <ul className={styles.attention}>
-                {attention.map((a) => (
-                  <li key={a.key}>
-                    <span className={`${styles.icon} ${TONE[a.tone]}`} aria-hidden>
-                      {GLYPH[a.tone]}
-                    </span>
-                    <Link href={a.href}>{a.text}</Link>
-                  </li>
-                ))}
-              </ul>
+              <div
+                className={styles.tableScroll}
+                role="region"
+                aria-label="Needs attention — scrollable table"
+                tabIndex={0}
+                style={{ maxHeight: "400px", maxWidth: "100%", overflowY: "auto", overflowX: "auto" }}
+              >
+                <table
+                  className={styles.table}
+                  style={{ width: "100%", minWidth: "520px", borderCollapse: "separate", borderSpacing: 0 }}
+                >
+                  <thead>
+                    <tr>
+                      <th scope="col" style={TH_STYLE}>
+                        Person
+                      </th>
+                      <th scope="col" style={TH_STYLE}>
+                        Role
+                      </th>
+                      <th scope="col" className={styles.num} style={TH_STYLE}>
+                        Items
+                      </th>
+                      <th scope="col" style={TH_STYLE}>
+                        Out for
+                      </th>
+                      <th scope="col" style={TH_STYLE}>
+                        Issue
+                      </th>
+                    </tr>
+                  </thead>
+
+                  <tbody>
+                    {attention.map((a) => (
+                      <tr key={a.key}>
+                        <td style={{ whiteSpace: "normal", overflow: "visible", overflowWrap: "anywhere" }}>
+                          <Link
+                            href={a.href}
+                            style={{
+                              display: "block",
+                              whiteSpace: "normal",
+                              overflow: "visible",
+                              textOverflow: "clip",
+                              overflowWrap: "anywhere",
+                              maxWidth: "none",
+                            }}
+                          >
+                            {a.person}
+                          </Link>
+                        </td>
+                        <td>{a.role}</td>
+                        <td className={styles.num}>{n(a.items)}</td>
+                        <td>{a.outFor}</td>
+                        <td>
+                          <span className={`${styles.icon} ${TONE[a.tone]}`} aria-hidden>
+                            {GLYPH[a.tone]}
+                          </span>{" "}
+                          {a.issue}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+
+                  <tfoot style={{ position: "static" }}>
+                    <tr>
+                      <th scope="row" colSpan={2} style={{ ...TFOOT_STYLE, textAlign: "left" }}>
+                        Total
+                      </th>
+                      <td className={styles.num} style={TFOOT_STYLE}>
+                        {n(attention.reduce((total, a) => total + a.items, 0))}
+                      </td>
+                      <td style={TFOOT_STYLE}>—</td>
+                      <td style={TFOOT_STYLE}>{attention.length} row{attention.length === 1 ? "" : "s"}</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
             )}
           </section>
 
-          <section
-  className={styles.card}
-  aria-label="Who has items"
-  style={{ minWidth: 0 }}
->
-  <h2>Who has items</h2>
+          {/* WHO HAS ITEMS */}
+          <section className={styles.card} aria-label="Who has items" style={{ minWidth: 0 }}>
+            <h2>Who has items</h2>
 
-  <div
-    className={styles.tableScroll}
-    role="region"
-    aria-label="Who has items — scrollable table"
-    tabIndex={0}
-    style={{
-      maxHeight: "400px",
-      maxWidth: "100%",
-      overflowY: "auto",
-      overflowX: "auto",
-    }}
-  >
-    <table
-      className={styles.table}
-      style={{
-        width: "100%",
-        minWidth: "420px",
-        borderCollapse: "separate",
-        borderSpacing: 0,
-      }}
-    >
-      <thead>
-        <tr>
-          <th
-            scope="col"
-            style={{
-              position: "sticky",
-              top: 0,
-              zIndex: 2,
-              backgroundColor: "#1e293b",
-              color: "#ffffff",
-            }}
-          >
-            Person
-          </th>
-
-          <th
-            scope="col"
-            className={styles.num}
-            style={{
-              position: "sticky",
-              top: 0,
-              zIndex: 2,
-              backgroundColor: "#1e293b",
-              color: "#ffffff",
-            }}
-          >
-            Items
-          </th>
-
-          <th
-            scope="col"
-            className={styles.num}
-            style={{
-              position: "sticky",
-              top: 0,
-              zIndex: 2,
-              backgroundColor: "#1e293b",
-              color: "#ffffff",
-            }}
-          >
-            Longest
-          </th>
-        </tr>
-      </thead>
-
-      <tbody>
-        {d.holders.length === 0 ? (
-          <tr>
-            <td colSpan={3} className={styles.muted}>
-              Nothing is out right now.
-            </td>
-          </tr>
-        ) : (
-          d.holders.map((h) => (
-            <tr key={h.person_id}>
-              <td
-                style={{
-                  whiteSpace: "normal",
-                  overflow: "visible",
-                  overflowWrap: "anywhere",
-                }}
+            <div
+              className={styles.tableScroll}
+              role="region"
+              aria-label="Who has items — scrollable table"
+              tabIndex={0}
+              style={{ maxHeight: "400px", maxWidth: "100%", overflowY: "auto", overflowX: "auto" }}
+            >
+              <table
+                className={styles.table}
+                style={{ width: "100%", minWidth: "420px", borderCollapse: "separate", borderSpacing: 0 }}
               >
-                <Link
-                  href={inventory({ holder: h.person_id })}
-                  style={{
-                    display: "block",
-                    whiteSpace: "normal",
-                    overflow: "visible",
-                    textOverflow: "clip",
-                    overflowWrap: "anywhere",
-                    maxWidth: "none",
-                  }}
-                >
-                  {h.name}
-                </Link>
+                <thead>
+                  <tr>
+                    <th scope="col" style={TH_STYLE}>
+                      Person
+                    </th>
+                    <th scope="col" className={styles.num} style={TH_STYLE}>
+                      Items
+                    </th>
+                    <th scope="col" className={styles.num} style={TH_STYLE}>
+                      Longest
+                    </th>
+                  </tr>
+                </thead>
 
-                {h.role && (
-                  <span
-                    className={styles.muted}
-                    style={{ display: "block", marginTop: 4 }}
-                  >
-                    {ROLE_LABELS[h.role]}
-                  </span>
-                )}
-              </td>
+                <tbody>
+                  {d.holders.length === 0 ? (
+                    <tr>
+                      <td colSpan={3} className={styles.muted}>
+                        Nothing is out right now.
+                      </td>
+                    </tr>
+                  ) : (
+                    d.holders.map((h) => (
+                      <tr key={h.person_id}>
+                        <td style={{ whiteSpace: "normal", overflow: "visible", overflowWrap: "anywhere" }}>
+                          <Link
+                            href={inventory({ holder: h.person_id })}
+                            style={{
+                              display: "block",
+                              whiteSpace: "normal",
+                              overflow: "visible",
+                              textOverflow: "clip",
+                              overflowWrap: "anywhere",
+                              maxWidth: "none",
+                            }}
+                          >
+                            {h.name}
+                          </Link>
 
-              <td className={styles.num}>{n(h.count)}</td>
+                          {h.role && (
+                            <span className={styles.muted} style={{ display: "block", marginTop: 4 }}>
+                              {ROLE_LABELS[h.role]}
+                            </span>
+                          )}
+                        </td>
 
-              <td className={styles.num}>
-                {days(h.oldestDays)}
-              </td>
-            </tr>
-          ))
-        )}
-      </tbody>
+                        <td className={styles.num}>{n(h.count)}</td>
 
-      <tfoot style={{ position: "static" }}>
-        <tr>
-          <th
-            scope="row"
-            style={{
-              position: "static",
-              textAlign: "left",
-              borderTop: "2px solid #64748b",
-              backgroundColor: "#1e293b",
-              color: "#ffffff",
-              fontWeight: 700,
-            }}
-          >
-            Grand total
-          </th>
+                        <td className={styles.num}>{days(h.oldestDays)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
 
-          <td
-            className={styles.num}
-            style={{
-              position: "static",
-              borderTop: "2px solid #64748b",
-              backgroundColor: "#1e293b",
-              color: "#ffffff",
-              fontWeight: 700,
-            }}
-          >
-            {n(
-              d.holders.reduce(
-                (total, holder) => total + holder.count,
-                0
-              )
-            )}
-          </td>
-
-          <td
-            className={styles.num}
-            style={{
-              position: "static",
-              borderTop: "2px solid #64748b",
-              backgroundColor: "#1e293b",
-              color: "#ffffff",
-              fontWeight: 700,
-            }}
-          >
-            —
-          </td>
-        </tr>
-      </tfoot>
-    </table>
-  </div>
-</section>
+                <tfoot style={{ position: "static" }}>
+                  <tr>
+                    <th scope="row" style={{ ...TFOOT_STYLE, textAlign: "left" }}>
+                      Grand total
+                    </th>
+                    <td className={styles.num} style={TFOOT_STYLE}>
+                      {n(holdersTotal)}
+                    </td>
+                    <td className={styles.num} style={TFOOT_STYLE}>
+                      —
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </section>
         </div>
 
         <p className={styles.muted}>
