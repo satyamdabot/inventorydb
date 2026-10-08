@@ -1,14 +1,25 @@
 "use server";
 
 import { randomUUID } from "node:crypto";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { after } from "next/server";
 import { actorOptions, allowedActors, defaultActor, resolveActor } from "@/lib/actors";
 import { requireRole } from "@/lib/authz";
 import { planReceive, planSend, type HandoverContext, type HandoverPlan } from "@/lib/handover";
 import type { Item } from "@/lib/schema";
 import { collectIds } from "@/lib/scan";
+import { archiveReceipt } from "@/lib/receipt-archive";
 import { getStore } from "@/lib/store";
 import { istTimestamp } from "@/lib/time";
+
+// The site's own address, used for the QR code link inside the archived PDF.
+async function siteUrl() {
+  const h = await headers();
+  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
+  const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
+  return `${proto}://${host}`;
+}
 
 const go = (path: string, params: Record<string, string>) => `${path}?${new URLSearchParams(params)}`;
 
@@ -18,6 +29,7 @@ async function run(
   path: string,
   build: (targets: Item[], ctx: HandoverContext) => HandoverPlan | Promise<HandoverPlan>,
   summary: (plan: HandoverPlan) => Record<string, string>,
+  onSaved?: (plan: HandoverPlan) => void | Promise<void>,
 ) {  const user = await requireRole("admin", "im", "rig");
   const ids = collectIds(String(formData.get("scanned") ?? ""), formData.getAll("ids").map(String));
   if (!ids.length) redirect(go(path, { error: "Scan or tick at least one item." }));
@@ -71,6 +83,7 @@ async function run(
   if (plan.errors.length) redirect(go(path, { error: `${plan.errors.join(" ")} Nothing was saved.` }));
 
   await store.commitBatch(plan.events, plan.items);
+  if (onSaved) await onSaved(plan);
   redirect(go(path, { done: String(plan.items.length), ...summary(plan) }));
 }
 
@@ -94,6 +107,15 @@ export async function sendCards(formData: FormData) {
       hub: plan.items[0]?.current_hub ?? "",
       batch: plan.events[0]?.batch_id ?? "",
     }),
+    async (plan) => {
+      // Save the receipt PDF to Drive and log it in the "Receipts" tab.
+      // This runs after the page has redirected, so the user never waits for it,
+      // and a Drive/Sheets problem cannot undo the handover that was just saved.
+      const batchId = plan.events[0]?.batch_id;
+      if (!batchId) return;
+      const base = await siteUrl();
+      after(() => archiveReceipt(batchId, base));
+    },
   );
 }
 
