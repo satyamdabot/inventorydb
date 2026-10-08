@@ -16,8 +16,9 @@ const ACTION_TITLE: Record<string, string> = {
   correct: "Correction record",
 };
 
-// Next.js serves public/instawork.svg at this URL.
-const RECEIPT_LOGO = "/instawork.svg";
+// Next.js serves public/Instawork.svg at this URL.
+// The path is case-sensitive on Vercel, so the capital "I" must match the file name.
+const RECEIPT_LOGO = "/Instawork.svg";
 
 /**
  * Build the receipt URL used in the QR code.
@@ -102,7 +103,7 @@ export default async function ReceiptPage({
         >
           <div style={{ minWidth: 0, flex: "1 1 220px" }}>
             {/* RECEIPT LOGO ONLY:
-                File location: public/instawork.svg
+                File location: public/Instawork.svg
                 No website link is attached.
                 This image is inside the printable receipt. */}
             {/* eslint-disable-next-line @next/next/no-img-element -- local receipt logo */}
