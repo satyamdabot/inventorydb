@@ -5,7 +5,7 @@ import {
   defaultActor,
 } from "@/lib/actors";
 import { requireRole } from "@/lib/authz";
-import { ROLE_LABELS, one } from "@/lib/labels";
+import { one } from "@/lib/labels";
 import { getStore } from "@/lib/store";
 import styles from "../../admin/admin.module.css";
 import { receiveCards } from "../actions";
@@ -27,14 +27,14 @@ export default async function ReceivePage({
   ]);
 
   const activeHubs = hubs
-    .filter((h) => h.active !== "false")
+    .filter((hub) => hub.active !== "false")
     .sort((a, b) => a.name.localeCompare(b.name));
 
   const hubNames = new Map(
-    hubs.map((h) => [h.hub_id, h.name])
+    hubs.map((hub) => [hub.hub_id, hub.name])
   );
 
-  // Existing rules determine who can record this receipt.
+  // Existing permissions determine who may record the receipt.
   const byOptions = allowedActors(
     user,
     actorOptions(
@@ -44,13 +44,7 @@ export default async function ReceivePage({
     )
   );
 
-  // Receive-from options identify people returning items.
-  // This is different from the person recording the receipt.
-  const receiveFromOptions = [...people]
-    .filter((person) => person.active !== "false")
-    .sort((a, b) => a.name.localeCompare(b.name));
-
-  // Count items pending receipt at each hub.
+  // Count items waiting to be received at each hub.
   const pendingByHub = new Map<string, number>();
 
   for (const item of items) {
@@ -65,10 +59,10 @@ export default async function ReceivePage({
   const busiest = [...pendingByHub.entries()]
     .sort((a, b) => b[1] - a[1])[0]?.[0];
 
-  // Keep the existing receiving-hub default logic.
+  // Preserve the existing receiving-hub selection logic.
   const isActive = (id?: string) =>
     Boolean(id) &&
-    activeHubs.some((h) => h.hub_id === id);
+    activeHubs.some((hub) => hub.hub_id === id);
 
   const myHub = people.find(
     (person) => person.person_id === user.personId
@@ -84,7 +78,7 @@ export default async function ReceivePage({
         ? busiest!
         : (
             activeHubs.find(
-              (h) => h.is_central === "true"
+              (candidate) => candidate.is_central === "true"
             )?.hub_id ??
             activeHubs[0]?.hub_id ??
             ""
@@ -117,12 +111,12 @@ export default async function ReceivePage({
         Scan the QR codes into the box.
       </p>
 
-      {/* Receiving location selection. */}
+      {/* Receiving hub selection. */}
       <form method="get" className={styles.row}>
         <HubSelect
-          hubs={activeHubs.map((h) => ({
-            id: h.hub_id,
-            name: h.name,
+          hubs={activeHubs.map((candidate) => ({
+            id: candidate.hub_id,
+            name: candidate.name,
           }))}
           value={hub}
         />
@@ -177,74 +171,8 @@ export default async function ReceivePage({
           }))}
         />
 
-        {/* NEW: Receive from, placed after the scanning component.
-            The receiving action must be updated before this
-            selection can affect saved receipt/history records. */}
-        <section
-          aria-label="Receive from"
-          style={{
-            marginTop: 16,
-            marginBottom: 16,
-            padding: 16,
-            border: "1px solid #cbd5e1",
-            borderRadius: 8,
-          }}
-        >
-          <label
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 8,
-            }}
-          >
-            <span style={{ fontWeight: 600 }}>
-              Receive from
-            </span>
-
-            <select
-              name="receiveFrom"
-              defaultValue=""
-              disabled={receiveFromOptions.length === 0}
-              style={{
-                width: "100%",
-                padding: "10px 12px",
-                border: "1px solid #94a3b8",
-                borderRadius: 6,
-              }}
-            >
-              <option value="">
-                Select the person returning the items
-              </option>
-
-              {receiveFromOptions.map((person) => (
-                <option
-                  key={person.person_id}
-                  value={person.person_id}
-                >
-                  {person.name}
-                  {" · "}
-                  {ROLE_LABELS[person.role] ?? person.role}
-                  {" · "}
-                  {hubNames.get(person.hub) ?? person.hub}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          {receiveFromOptions.length === 0 && (
-            <p className={styles.muted}>
-              No active people are available.
-            </p>
-          )}
-
-          <p className={styles.muted}>
-            This selection is not yet connected to receipt
-            history. Receiving continues to use the existing
-            item and handover rules.
-          </p>
-        </section>
-
-        {/* Received by identifies who records this transaction. */}
+        {/* Receive from has been removed.
+            Received by remains to identify the recorder. */}
         <div className={styles.row}>
           {user.role === "admin" ? (
             <select
