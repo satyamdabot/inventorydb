@@ -135,7 +135,8 @@ export default async function PeoplePage({
   const emailCounts = new Map<string, number>();
 
   for (const person of people) {
-    const email = normalize(person.linked_user ?? "");
+  if (person.active === "false") continue; // ignore deactivated records
+  const email = normalize(person.linked_user ?? "");
 
     if (email) {
       emailCounts.set(
