@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { CSSProperties } from "react";
 import { requireRole } from "@/lib/authz";
 import { one } from "@/lib/labels";
 import { getStore } from "@/lib/store";
@@ -16,6 +17,23 @@ const ROLE_LABELS = {
 
 type PersonRole = keyof typeof ROLE_LABELS;
 
+const labelStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 6,
+  flex: "1 1 180px",
+  minWidth: 0,
+};
+
+const selectStyle: CSSProperties = {
+  width: "100%",
+  padding: "10px 12px",
+  border: "1px solid #94a3b8",
+  borderRadius: 6,
+  backgroundColor: "#ffffff",
+  color: "#0f172a",
+};
+
 function normalize(value: string): string {
   return value.trim().toLowerCase();
 }
@@ -30,10 +48,12 @@ function isPersonRole(value: string): value is PersonRole {
 export default async function PeoplePage({
   searchParams,
 }: PageProps<"/admin/people">) {
-  // Keep existing access permissions.
   await requireRole("admin", "im");
 
   const sp = await searchParams;
+  const error = one(sp.error);
+  const done = one(sp.done);
+
   const store = getStore();
 
   const [people, allHubs] = await Promise.all([
@@ -49,18 +69,15 @@ export default async function PeoplePage({
     a.name.localeCompare(b.name)
   );
 
-  // Only active hubs are offered for adding/editing people,
-  // preserving the behaviour of your original page.
   const activeHubs = sortedHubs.filter(
     (hub) => hub.active !== "false"
   );
 
-  // Include all hubs when resolving existing people's cities.
   const hubById = new Map(
     allHubs.map((hub) => [hub.hub_id, hub])
   );
 
-  // Read filters from the URL.
+  // Read role and city filters from the URL.
   const requestedRole = normalize(one(sp.role));
 
   const selectedRole = isPersonRole(requestedRole)
@@ -68,11 +85,8 @@ export default async function PeoplePage({
     : "";
 
   const selectedCity = normalize(one(sp.city));
+  const hasFilters = Boolean(selectedRole || selectedCity);
 
-  /*
-   * City is taken from the person's assigned hub.
-   * If hub.city is blank, use the hub name.
-   */
   function cityForHub(hubId: string): string {
     const hub = hubById.get(hubId);
 
@@ -81,7 +95,7 @@ export default async function PeoplePage({
     return (hub.city ?? "").trim() || hub.name.trim();
   }
 
-  // Build a case-insensitive, de-duplicated list of cities.
+  // City dropdown includes inactive hubs for finding existing people.
   const cityMap = new Map<string, string>();
 
   for (const hub of sortedHubs) {
@@ -99,7 +113,9 @@ export default async function PeoplePage({
     .map(([value, label]) => ({ value, label }))
     .sort((a, b) => a.label.localeCompare(b.label));
 
-  // Both selected filters must match.
+  const unknownCity =
+    Boolean(selectedCity) && !cityMap.has(selectedCity);
+
   const filteredPeople = sortedPeople.filter((person) => {
     const roleMatches =
       !selectedRole || person.role === selectedRole;
@@ -111,12 +127,6 @@ export default async function PeoplePage({
     return roleMatches && cityMatches;
   });
 
-  const hasFilters = Boolean(selectedRole || selectedCity);
-
-  const unknownCity =
-    Boolean(selectedCity) && !cityMap.has(selectedCity);
-
-  // Find the actual Bangalore hub ID instead of assuming it.
   const bangaloreHub =
     activeHubs.find(
       (hub) => normalize(hub.hub_id) === "bangalore"
@@ -136,23 +146,52 @@ export default async function PeoplePage({
         <Link href="/">← Home</Link>
       </p>
 
-      <h1>People — filters enabled</h1>
+      <h1>People</h1>
 
       <p className={styles.muted}>
-        {people.length} people. Email is required when adding
-        a person. Use their Google login email to link their
-        account. Deactivate instead of deleting so history
+        {people.length} people. Email is required when adding or
+        editing a person. Use their Google login email to link
+        their account. Deactivate instead of deleting so history
         stays intact.
       </p>
 
-      {one(sp.error) && (
-        <p className={styles.error}>
-          Please check the name, role and hub, and enter a
-          valid email address. Email cannot be blank.
+      {/* Duplicate-email and validation messages. */}
+      {error && (
+        <p className={styles.error} role="alert">
+          {error === "email_exists"
+            ? "This email address is already there. Edit the existing person or use a different email."
+            : error === "person_not_found"
+              ? "This person could not be found. Refresh the page and try again."
+              : "Please check the name, role and hub, and enter a valid email address. Email cannot be blank."}
         </p>
       )}
 
-      {/* FILTERS: always visible directly below the heading. */}
+      {done === "added" && (
+        <p className={styles.ok} role="status">
+          Person added successfully.
+        </p>
+      )}
+
+      {done === "saved" && (
+        <p className={styles.ok} role="status">
+          Person updated successfully.
+        </p>
+      )}
+
+      {/* Import retains its existing independent validation. */}
+      <details className={styles.details}>
+        <summary>Bulk import from a spreadsheet</summary>
+
+        <p className={styles.muted}>
+          Paste cells copied from Excel or Google Sheets, or upload
+          a CSV. Columns: Name, Role (IM, IFO, FO, Rig), Hub, Email,
+          with the header in the first row.
+        </p>
+
+        <ImportForm />
+      </details>
+
+      {/* Filters appear directly after Bulk import. */}
       <section
         aria-label="Filter people"
         style={{
@@ -166,12 +205,7 @@ export default async function PeoplePage({
           color: "#0f172a",
         }}
       >
-        <h2
-          style={{
-            margin: "0 0 14px",
-            fontSize: 18,
-          }}
-        >
+        <h2 style={{ margin: "0 0 14px", fontSize: 18 }}>
           Filter people
         </h2>
 
@@ -186,29 +220,13 @@ export default async function PeoplePage({
             gap: 14,
           }}
         >
-          {/* Role filter does not change a person's saved role. */}
-          <label
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 6,
-              flex: "1 1 180px",
-              minWidth: 0,
-            }}
-          >
+          <label style={labelStyle}>
             <span style={{ fontWeight: 600 }}>Role</span>
 
             <select
               name="role"
               defaultValue={selectedRole}
-              style={{
-                width: "100%",
-                padding: "10px 12px",
-                border: "1px solid #94a3b8",
-                borderRadius: 6,
-                backgroundColor: "#ffffff",
-                color: "#0f172a",
-              }}
+              style={selectStyle}
             >
               <option value="">All roles</option>
               <option value="im">IM</option>
@@ -218,33 +236,16 @@ export default async function PeoplePage({
             </select>
           </label>
 
-          {/* City options come from the hubs collection. */}
-          <label
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              gap: 6,
-              flex: "1 1 180px",
-              minWidth: 0,
-            }}
-          >
+          <label style={labelStyle}>
             <span style={{ fontWeight: 600 }}>City</span>
 
             <select
               name="city"
               defaultValue={selectedCity}
-              style={{
-                width: "100%",
-                padding: "10px 12px",
-                border: "1px solid #94a3b8",
-                borderRadius: 6,
-                backgroundColor: "#ffffff",
-                color: "#0f172a",
-              }}
+              style={selectStyle}
             >
               <option value="">All cities</option>
 
-              {/* Preserve an unavailable city supplied in the URL. */}
               {unknownCity && (
                 <option value={selectedCity}>
                   {one(sp.city)} — unavailable
@@ -252,10 +253,7 @@ export default async function PeoplePage({
               )}
 
               {cityOptions.map((city) => (
-                <option
-                  key={city.value}
-                  value={city.value}
-                >
+                <option key={city.value} value={city.value}>
                   {city.label}
                 </option>
               ))}
@@ -291,37 +289,17 @@ export default async function PeoplePage({
           )}
         </form>
 
-        <p
-          style={{
-            margin: "14px 0 0",
-            fontSize: 14,
-          }}
-        >
-          Showing <strong>{filteredPeople.length}</strong>{" "}
-          of <strong>{people.length}</strong> people.
-          City is based on each person&apos;s assigned hub;
-          the hub name is used when its city is blank.
+        <p style={{ margin: "14px 0 0", fontSize: 14 }}>
+          Showing <strong>{filteredPeople.length}</strong> of{" "}
+          <strong>{people.length}</strong> people. City comes
+          from the assigned hub; the hub name is used if its city
+          is blank.
         </p>
       </section>
 
-      {/* Existing bulk import, separate from the filter form. */}
-      <details className={styles.details}>
-        <summary>Bulk import from a spreadsheet</summary>
-
-        <p className={styles.muted}>
-          Paste cells copied from Excel or Google Sheets, or
-          upload a CSV. Columns: Name, Role (IM, IFO, FO, Rig),
-          Hub, Email, with the header in the first row.
-          People who already exist (same name and hub) are
-          skipped.
-        </p>
-
-        <ImportForm />
-      </details>
-
-      {/* Add person: filters do not alter these input values. */}
       <h2>Add person</h2>
 
+      {/* Separate Add form; the filters do not change these inputs. */}
       <form action={addPerson} className={styles.row}>
         <input
           name="name"
@@ -338,13 +316,11 @@ export default async function PeoplePage({
           aria-label="New person's role"
           required
         >
-          {Object.entries(ROLE_LABELS).map(
-            ([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            )
-          )}
+          {Object.entries(ROLE_LABELS).map(([value, label]) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
         </select>
 
         <select
@@ -354,16 +330,11 @@ export default async function PeoplePage({
           required
         >
           {activeHubs.length === 0 && (
-            <option value="">
-              No active hubs available
-            </option>
+            <option value="">No active hubs available</option>
           )}
 
           {activeHubs.map((hub) => (
-            <option
-              key={hub.hub_id}
-              value={hub.hub_id}
-            >
+            <option key={hub.hub_id} value={hub.hub_id}>
               {hub.name}
             </option>
           ))}
@@ -386,24 +357,38 @@ export default async function PeoplePage({
         </button>
       </form>
 
-      {/* Render only the people matching the selected filters. */}
       <h2 style={{ marginTop: 24 }}>People list</h2>
 
       <div className={styles.list}>
         {filteredPeople.length === 0 ? (
           <p className={styles.muted}>
             {hasFilters
-              ? "No people match the selected role and city. Change the filters or click Clear filters."
+              ? "No people match the selected role and city."
               : "No people have been added yet."}
           </p>
         ) : (
-          filteredPeople.map((person) => (
-            <PersonRow
-              key={person.person_id}
-              person={person}
-              hubs={activeHubs}
-            />
-          ))
+          filteredPeople.map((person) => {
+            const assignedHub = hubById.get(person.hub);
+
+            // Preserve an existing inactive hub during editing.
+            const editingHubs =
+              assignedHub &&
+              !activeHubs.some(
+                (hub) => hub.hub_id === assignedHub.hub_id
+              )
+                ? [...activeHubs, assignedHub].sort((a, b) =>
+                    a.name.localeCompare(b.name)
+                  )
+                : activeHubs;
+
+            return (
+              <PersonRow
+                key={`${person.person_id}:${person.name}:${person.role}:${person.hub}:${person.linked_user}:${person.active}`}
+                person={person}
+                hubs={editingHubs}
+              />
+            );
+          })
         )}
       </div>
     </main>

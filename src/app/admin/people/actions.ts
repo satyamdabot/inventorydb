@@ -7,67 +7,170 @@ import { z } from "zod";
 import { requireRole } from "@/lib/authz";
 import { getStore } from "@/lib/store";
 
+// Both Add and Edit require a valid email.
 const PersonInput = z.object({
   name: z.string().trim().min(1).max(80),
   role: z.enum(["im", "ifo", "fo", "rig"]),
-  hub: z.string().min(1),
+  hub: z.string().trim().min(1),
   email: z.email("Enter a valid email address"),
 });
 
+function normalizeEmail(value: string): string {
+  return value.trim().toLowerCase();
+}
+
 function parse(formData: FormData) {
   return PersonInput.safeParse({
-    name: formData.get("name"),
-    role: formData.get("role"),
-    hub: formData.get("hub"),
-    email: String(formData.get("email") ?? "").trim().toLowerCase(),
+    name: String(formData.get("name") ?? ""),
+    role: String(formData.get("role") ?? ""),
+    hub: String(formData.get("hub") ?? ""),
+    email: normalizeEmail(
+      String(formData.get("email") ?? "")
+    ),
   });
 }
 
-async function hubExists(hub: string) {
-  return (await getStore().list("hubs")).some((h) => h.hub_id === hub);
+function fail(
+  error: "invalid" | "email_exists" | "person_not_found"
+): never {
+  redirect(
+    `/admin/people?${new URLSearchParams({ error })}`
+  );
 }
 
+function refreshPages() {
+  revalidatePath("/admin/people");
+  revalidatePath("/dashboard");
+  revalidatePath("/dashboard/analytics");
+  revalidatePath("/dashboard/my");
+  revalidatePath("/inventory");
+  revalidatePath("/handover/send");
+  revalidatePath("/handover/receive");
+}
+
+/** Add a person after checking email uniqueness. */
 export async function addPerson(formData: FormData) {
   await requireRole("admin", "im");
-  const parsed = parse(formData);
-  if (!parsed.success || !(await hubExists(parsed.data.hub))) redirect("/admin/people?error=invalid");
 
-  await getStore().upsert("people", [
+  const parsed = parse(formData);
+
+  if (!parsed.success) {
+    fail("invalid");
+  }
+
+  const input = parsed.data;
+  const store = getStore();
+
+  const [people, hubs] = await Promise.all([
+    store.list("people"),
+    store.list("hubs"),
+  ]);
+
+  // New people must be assigned to an active hub.
+  const validHub = hubs.some(
+    (hub) =>
+      hub.hub_id === input.hub &&
+      hub.active !== "false"
+  );
+
+  if (!validHub) {
+    fail("invalid");
+  }
+
+  // Include inactive people so their email is not reassigned.
+  const duplicate = people.some(
+    (person) =>
+      normalizeEmail(person.linked_user ?? "") ===
+      input.email
+  );
+
+  if (duplicate) {
+    fail("email_exists");
+  }
+
+  await store.upsert("people", [
     {
-      person_id: `p-${randomUUID().slice(0, 8)}`,
-      name: parsed.data.name,
-      role: parsed.data.role,
-      hub: parsed.data.hub,
-      linked_user: parsed.data.email,
+      person_id: `p-${randomUUID()}`,
+      name: input.name,
+      role: input.role,
+      hub: input.hub,
+      linked_user: input.email,
       active: "true",
     },
   ]);
-  revalidatePath("/admin/people");
+
+  refreshPages();
+  redirect("/admin/people?done=added");
 }
 
-// person_id never changes, so past events keep pointing at the right person after edits.
+/** Save edits without changing the person's historical ID. */
 export async function savePerson(formData: FormData) {
   await requireRole("admin", "im");
-  const person_id = String(formData.get("person_id") ?? "");
+
+  const personId = String(
+    formData.get("person_id") ?? ""
+  ).trim();
+
   const parsed = parse(formData);
-  const store = getStore();
-  if (
-    !person_id ||
-    !parsed.success ||
-    !(await hubExists(parsed.data.hub)) ||
-    !(await store.list("people")).some((p) => p.person_id === person_id)
-  ) {
-    redirect("/admin/people?error=invalid");
+
+  if (!personId || !parsed.success) {
+    fail("invalid");
   }
+
+  const input = parsed.data;
+  const store = getStore();
+
+  const [people, hubs] = await Promise.all([
+    store.list("people"),
+    store.list("hubs"),
+  ]);
+
+  const existing = people.find(
+    (person) => person.person_id === personId
+  );
+
+  if (!existing) {
+    fail("person_not_found");
+  }
+
+  // Retaining an existing inactive hub is allowed.
+  // Moving to another hub requires that hub to be active.
+  const validHub = hubs.some(
+    (hub) =>
+      hub.hub_id === input.hub &&
+      (hub.active !== "false" || existing.hub === input.hub)
+  );
+
+  if (!validHub) {
+    fail("invalid");
+  }
+
+  // A person can keep their own email, but cannot use another's.
+  const duplicate = people.some(
+    (person) =>
+      person.person_id !== personId &&
+      normalizeEmail(person.linked_user ?? "") ===
+        input.email
+  );
+
+  if (duplicate) {
+    fail("email_exists");
+  }
+
   await store.upsert("people", [
     {
-      person_id,
-      name: parsed.data.name,
-      role: parsed.data.role,
-      hub: parsed.data.hub,
-      linked_user: parsed.data.email,
-      active: formData.get("active") === "on" ? "true" : "false",
+      person_id: personId,
+      name: input.name,
+      role: input.role,
+      hub: input.hub,
+      linked_user: input.email,
+      active:
+        formData.get("active") === "on"
+          ? "true"
+          : "false",
     },
   ]);
-  revalidatePath("/admin/people");
+
+  refreshPages();
+  redirect("/admin/people?done=saved");
 }
