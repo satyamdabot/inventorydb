@@ -21,31 +21,20 @@ const ACTION_TITLE: Record<string, string> = {
 async function baseUrl() {
   const h = await headers();
 
-  const host =
-    h.get("x-forwarded-host") ??
-    h.get("host") ??
-    "localhost:3000";
+  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
 
-  const proto =
-    h.get("x-forwarded-proto") ??
-    (host.startsWith("localhost") ? "http" : "https");
+  const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
 
   return `${proto}://${host}`;
 }
 
-export default async function ReceiptPage({
-  params,
-}: PageProps<"/handover/receipt/[batch]">) {
+export default async function ReceiptPage({ params }: PageProps<"/handover/receipt/[batch]">) {
   await requireRole("admin", "im", "rig");
 
   const { batch } = await params;
   const store = getStore();
 
-  const [events, items, hubs] = await Promise.all([
-    store.list("events"),
-    store.list("items"),
-    store.list("hubs"),
-  ]);
+  const [events, items, hubs] = await Promise.all([store.list("events"), store.list("items"), store.list("hubs")]);
 
   const summary = summarizeBatch(events, items, hubs, batch);
 
@@ -54,18 +43,14 @@ export default async function ReceiptPage({
   }
 
   // QR CODE GENERATION: encode this batch's receipt URL.
-  const url =
-    `${await baseUrl()}/handover/receipt/` +
-    encodeURIComponent(summary.batchId);
+  const url = `${await baseUrl()}/handover/receipt/` + encodeURIComponent(summary.batchId);
 
   const qr = await qrToDataURL(url, {
     margin: 1,
     width: 220,
   });
 
-  const missingPriceCount = summary.items.filter(
-    (item) => formatPrice(item.price) === ""
-  ).length;
+  const missingPriceCount = summary.items.filter((item) => formatPrice(item.price) === "").length;
 
   return (
     <main className={styles.page}>
@@ -85,7 +70,7 @@ export default async function ReceiptPage({
           }}
         >
           <div style={{ minWidth: 0 }}>
-                       {/* LOGO: public/instawork.svg */}
+            {/* LOGO: file lives at public/instawork.svg, served by Next.js at /instawork.svg */}
             {/* eslint-disable-next-line @next/next/no-img-element -- local receipt logo */}
             <img
               src="/instawork.svg"
@@ -101,13 +86,10 @@ export default async function ReceiptPage({
               }}
             />
 
-            <h1>
-              {ACTION_TITLE[summary.action] ?? "Batch record"}
-            </h1>
+            <h1>{ACTION_TITLE[summary.action] ?? "Batch record"}</h1>
 
             <p className={styles.muted}>
-              Batch {summary.batchId} ·{" "}
-              {formatIst(summary.occurredAt)} IST
+              Batch {summary.batchId} · {formatIst(summary.occurredAt)} IST
             </p>
           </div>
 
@@ -167,37 +149,23 @@ export default async function ReceiptPage({
                 <td>{item.model || "—"}</td>
 
                 {/* The configured amount is stored in items.price. */}
-                <td>
-                  {formatPrice(item.price) || "Not set"}
-                </td>
+                <td>{formatPrice(item.price) || "Not set"}</td>
 
-                <td>
-                  {STATUS_LABELS[item.statusAfter as Status] ??
-                    item.statusAfter}
-                </td>
+                <td>{STATUS_LABELS[item.statusAfter as Status] ?? item.statusAfter}</td>
               </tr>
             ))}
           </tbody>
 
           <tfoot>
             <tr>
-              <th
-                scope="row"
-                colSpan={4}
-                style={{ textAlign: "left" }}
-              >
-                {missingPriceCount > 0 &&
-                summary.totalPrice !== null
+              <th scope="row" colSpan={4} style={{ textAlign: "left" }}>
+                {missingPriceCount > 0 && summary.totalPrice !== null
                   ? "Known penalty amounts subtotal"
                   : "Total listed penalty amount"}
               </th>
 
               <td>
-                <strong>
-                  {summary.totalPrice !== null
-                    ? formatPrice(String(summary.totalPrice))
-                    : "Not set"}
-                </strong>
+                <strong>{summary.totalPrice !== null ? formatPrice(String(summary.totalPrice)) : "Not set"}</strong>
               </td>
 
               <td></td>
@@ -208,9 +176,8 @@ export default async function ReceiptPage({
         {missingPriceCount > 0 && (
           <p className={styles.muted}>
             {missingPriceCount} item
-            {missingPriceCount === 1 ? " has" : "s have"} no valid
-            stored amount. Missing amounts are excluded from the
-            total and must be verified.
+            {missingPriceCount === 1 ? " has" : "s have"} no valid stored amount. Missing amounts are excluded from
+            the total and must be verified.
           </p>
         )}
 
@@ -230,17 +197,11 @@ export default async function ReceiptPage({
             fontWeight: 600,
           }}
         >
-          <strong>IMPORTANT — ITEM RESPONSIBILITY:</strong>{" "}
-          You are responsible for the safekeeping and timely
-          return of the items listed on this receipt. Any loss
-          or damage must be reported immediately. If you are
-          found responsible following review, the applicable
-          penalty may be deducted from your salary, subject to
-          company policy, any required consent, and applicable
-          law. The listed amounts are not an automatic charge.
+          <strong>IMPORTANT — ITEM RESPONSIBILITY:</strong> You are responsible for the safekeeping and timely return
+          of the items listed on this receipt. Any loss or damage must be reported immediately. If you are found
+          responsible following review, the applicable penalty may be deducted from your salary, subject to company
+          policy, any required consent, and applicable law. The listed amounts are not an automatic charge.
         </p>
-
-       
       </div>
 
       <div className={styles.noPrint}>

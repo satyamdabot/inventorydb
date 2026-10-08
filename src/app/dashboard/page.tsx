@@ -16,7 +16,7 @@ const inventory = (params: Record<string, string>) => `/inventory?${new URLSearc
 const days = (d: number | null) => (d === null ? "—" : d === 0 ? "today" : `${d}d`);
 
 // One row in the "Needs attention" table.
-interface AttentionRow {
+interface Attention {
   key: string;
   person: string;
   role: string;
@@ -29,26 +29,11 @@ interface AttentionRow {
 const GLYPH = { critical: "✕", warning: "▲", info: "●" } as const;
 const TONE = { critical: styles.iconCritical, warning: styles.iconWarning, info: styles.iconMuted };
 
-// Label and inventory status for each late-group kind.
-const KIND_LABEL: Record<string, string> = {
-  fo: "Field officer",
-  ifo: "IFO",
-  rig: "Rig team",
-  im: "Inventory manager",
-  pending: "Hub",
-};
-const KIND_STATUS: Record<string, string> = {
-  fo: "with_fo",
-  ifo: "traveling",
-  rig: "with_rig",
-  im: "with_internal",
-};
-
 const STATUS_ORDER: Status[] = ["in_stock", "with_fo", "traveling", "with_rig", "with_internal", "pending", "lost", "damaged", "retired"];
 const HUB_BARS = 8;
 const LATE_LINES = 8; // late rows shown before "and N more"
 
-// Shared cell styles for the dark sticky table headers.
+// Shared styles for dark sticky table headers / footers.
 const TH_STYLE: CSSProperties = { position: "sticky", top: 0, zIndex: 2, backgroundColor: "#1e293b", color: "#ffffff" };
 const TFOOT_STYLE: CSSProperties = {
   position: "static",
@@ -129,17 +114,16 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
   // Needs attention: one row per person (FO, IFO, rig team, IM) or hub holding items for more than
   // LATE_AFTER_HOURS, oldest first, then lost / damaged / mismatched items. Empty means all is well.
   const howLong = (hours: number) => (hours < 48 ? `${Math.floor(hours)} hours` : `${Math.floor(hours / 24)} days`);
-  const attention: AttentionRow[] = [];
-  const seenPeople = new Set<string>();
+  const attention: Attention[] = [];
+  const seen = new Set<string>();
 
   for (const g of d.late.slice(0, LATE_LINES)) {
-    const kind = String(g.kind);
-    seenPeople.add(g.key);
-    if (kind === "pending") {
+    seen.add(g.key);
+    if (g.kind === "pending") {
       attention.push({
         key: `late-pending-${g.key}`,
         person: g.label,
-        role: KIND_LABEL.pending,
+        role: "Hub",
         items: g.count,
         outFor: howLong(g.oldestHours),
         issue: `Sent, not received after ${LATE_AFTER_HOURS}h`,
@@ -148,31 +132,30 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
       });
     } else {
       attention.push({
-        key: `late-${kind}-${g.key}`,
+        key: `late-${g.kind}-${g.key}`,
         person: g.label,
-        role: KIND_LABEL[kind] ?? kind,
+        role: g.kind === "fo" ? "FO" : "IFO",
         items: g.count,
         outFor: howLong(g.oldestHours),
-        issue: kind === "ifo" ? `Not arrived after ${LATE_AFTER_HOURS}h` : `Not returned after ${LATE_AFTER_HOURS}h`,
-        href: inventory({ holder: g.key, status: KIND_STATUS[kind] ?? "" }),
+        issue: g.kind === "fo" ? `Not returned after ${LATE_AFTER_HOURS}h` : `Not arrived after ${LATE_AFTER_HOURS}h`,
+        href: inventory({ holder: g.key, status: g.kind === "fo" ? "with_fo" : "traveling" }),
         tone: "warning",
       });
     }
   }
 
-  // Rig team and IM holders are not part of d.late, so add them from the holders list (held ≥ 1 day).
+  // Rig team and IM are not part of d.late, so take them from the holders list (held for 1 day or more).
   for (const h of d.holders) {
-    const role = String(h.role ?? "");
-    if ((role !== "rig" && role !== "im") || seenPeople.has(h.person_id)) continue;
+    if (!h.role || (h.role !== "rig" && h.role !== "im") || seen.has(h.person_id)) continue;
     if (h.oldestDays === null || h.oldestDays < 1) continue;
     attention.push({
-      key: `late-${role}-${h.person_id}`,
+      key: `late-${h.role}-${h.person_id}`,
       person: h.name,
-      role: ROLE_LABELS[role as keyof typeof ROLE_LABELS] ?? KIND_LABEL[role] ?? role,
+      role: ROLE_LABELS[h.role],
       items: h.count,
       outFor: `${h.oldestDays} day${h.oldestDays === 1 ? "" : "s"}`,
       issue: `Not returned after ${LATE_AFTER_HOURS}h`,
-      href: inventory({ holder: h.person_id, status: KIND_STATUS[role] }),
+      href: inventory({ holder: h.person_id, status: h.role === "rig" ? "with_rig" : "with_internal" }),
       tone: "warning",
     });
   }
@@ -185,7 +168,7 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
       items: d.late.slice(LATE_LINES).reduce((sum, g) => sum + g.count, 0),
       outFor: "—",
       issue: "Also late",
-      href: inventory({ status: "with_fo,traveling,pending,with_rig,with_internal" }),
+      href: inventory({ status: "with_fo,traveling,pending" }),
       tone: "info",
     });
   }
@@ -335,8 +318,8 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
           <section className={styles.card} id="attention" aria-label="Needs attention" style={{ minWidth: 0 }}>
             <h2>Needs attention</h2>
             <p className={styles.muted}>
-              People (FO, IFO, rig team, IM) or hubs holding items for more than {LATE_AFTER_HOURS} hours, plus lost,
-              damaged and mismatched items.
+              FO, IFO, rig team, IM or hubs holding items for more than {LATE_AFTER_HOURS} hours, plus lost, damaged
+              and mismatched items.
             </p>
 
             {attention.length === 0 ? (
@@ -397,7 +380,7 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
                           </Link>
                         </td>
                         <td>{a.role}</td>
-                        <td className={styles.num}>{n(a.items)}</td>
+                        <td className={styles.num}>{a.items ? n(a.items) : "—"}</td>
                         <td>{a.outFor}</td>
                         <td>
                           <span className={`${styles.icon} ${TONE[a.tone]}`} aria-hidden>
@@ -418,7 +401,9 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
                         {n(attention.reduce((total, a) => total + a.items, 0))}
                       </td>
                       <td style={TFOOT_STYLE}>—</td>
-                      <td style={TFOOT_STYLE}>{attention.length} row{attention.length === 1 ? "" : "s"}</td>
+                      <td style={TFOOT_STYLE}>
+                        {attention.length} row{attention.length === 1 ? "" : "s"}
+                      </td>
                     </tr>
                   </tfoot>
                 </table>
