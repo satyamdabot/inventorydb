@@ -136,7 +136,7 @@ export default async function PeoplePage({
         <Link href="/">← Home</Link>
       </p>
 
-      <h1>People</h1>
+      <h1>People — filters enabled</h1>
 
       <p className={styles.muted}>
         {people.length} people. Email is required when adding
