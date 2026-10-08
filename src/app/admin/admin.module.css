@@ -136,3 +136,56 @@
   color: #fff;
   cursor: pointer;
 }
+
+/* People: the role / city filter box. Colours follow the page, so it reads in light and dark mode. */
+.filterBox {
+  border: 1px solid #d9d9d9;
+  border-radius: 8px;
+  padding: 12px 14px;
+  display: grid;
+  gap: 10px;
+}
+
+.filterBox h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.filterForm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+}
+
+.filterField {
+  display: grid;
+  gap: 4px;
+  flex: 1 1 180px;
+  min-width: 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.filterField select {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #c9c9c9;
+  border-radius: 6px;
+  font-weight: 400;
+}
+
+.filterForm button {
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: 1px solid #222;
+  background: #222;
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.filterClear {
+  padding: 8px 0;
+  text-decoration: underline;
+}
