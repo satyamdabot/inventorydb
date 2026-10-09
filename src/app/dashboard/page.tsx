@@ -31,7 +31,6 @@ const TONE = { critical: styles.iconCritical, warning: styles.iconWarning, info:
 
 const STATUS_ORDER: Status[] = ["in_stock", "with_fo", "traveling", "with_rig", "with_internal", "pending", "lost", "damaged", "retired"];
 const HUB_BARS = 8;
-const LATE_LINES = 8; // late rows shown before "and N more"
 
 // Shared styles for dark sticky table headers / footers.
 const TH_STYLE: CSSProperties = { position: "sticky", top: 0, zIndex: 2, backgroundColor: "#1e293b", color: "#ffffff" };
@@ -112,12 +111,12 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
   }
 
   // Needs attention: one row per person (FO, IFO, rig team, IM) or hub holding items for more than
-  // LATE_AFTER_HOURS, oldest first, then lost / damaged / mismatched items. Empty means all is well.
+  // LATE_AFTER_HOURS, oldest first, then lost / damaged items. Every name is listed.
   const howLong = (hours: number) => (hours < 48 ? `${Math.floor(hours)} hours` : `${Math.floor(hours / 24)} days`);
   const attention: Attention[] = [];
   const seen = new Set<string>();
 
-  for (const g of d.late.slice(0, LATE_LINES)) {
+  for (const g of d.late) {
     seen.add(g.key);
     if (g.kind === "pending") {
       attention.push({
@@ -126,7 +125,7 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
         role: "Hub",
         items: g.count,
         outFor: howLong(g.oldestHours),
-        issue: `Sent, not received after ${LATE_AFTER_HOURS}h`,
+        issue: "Sent, not received",
         href: `/handover/receive?${new URLSearchParams({ hub: g.key })}`,
         tone: "warning",
       });
@@ -137,7 +136,7 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
         role: g.kind === "fo" ? "FO" : "IFO",
         items: g.count,
         outFor: howLong(g.oldestHours),
-        issue: g.kind === "fo" ? `Not returned after ${LATE_AFTER_HOURS}h` : `Not arrived after ${LATE_AFTER_HOURS}h`,
+        issue: g.kind === "fo" ? "Not returned" : "Not arrived",
         href: inventory({ holder: g.key, status: g.kind === "fo" ? "with_fo" : "traveling" }),
         tone: "warning",
       });
@@ -154,41 +153,17 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
       role: ROLE_LABELS[h.role],
       items: h.count,
       outFor: `${h.oldestDays} day${h.oldestDays === 1 ? "" : "s"}`,
-      issue: `Not returned after ${LATE_AFTER_HOURS}h`,
+      issue: "Not returned",
       href: inventory({ holder: h.person_id, status: h.role === "rig" ? "with_rig" : "with_internal" }),
       tone: "warning",
     });
   }
 
-  if (d.late.length > LATE_LINES) {
-    attention.push({
-      key: "late-more",
-      person: `${d.late.length - LATE_LINES} more`,
-      role: "—",
-      items: d.late.slice(LATE_LINES).reduce((sum, g) => sum + g.count, 0),
-      outFor: "—",
-      issue: "Also late",
-      href: inventory({ status: "with_fo,traveling,pending" }),
-      tone: "info",
-    });
-  }
   if (s.lost > 0) {
     attention.push({ key: "lost", person: "—", role: "—", items: s.lost, outFor: "—", issue: "Lost", href: inventory({ status: "lost" }), tone: "critical" });
   }
   if (s.damaged > 0) {
     attention.push({ key: "damaged", person: "—", role: "—", items: s.damaged, outFor: "—", issue: "Damaged", href: inventory({ status: "damaged" }), tone: "critical" });
-  }
-  if (d.inconsistencies.length > 0) {
-    attention.push({
-      key: "mismatch",
-      person: "—",
-      role: "—",
-      items: d.inconsistencies.length,
-      outFor: "—",
-      issue: "Doesn't match history",
-      href: "/dashboard/analytics",
-      tone: "critical",
-    });
   }
 
   const holdersTotal = d.holders.reduce((total, holder) => total + holder.count, 0);
@@ -321,8 +296,8 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
           <section className={styles.card} id="attention" aria-label="Needs attention" style={{ minWidth: 0 }}>
             <h2>Needs attention</h2>
             <p className={styles.muted}>
-              FO, IFO, rig team, IM or hubs holding items for more than {LATE_AFTER_HOURS} hours, plus lost, damaged
-              and mismatched items.
+              FO, IFO, rig team, IM or hubs holding items for more than {LATE_AFTER_HOURS} hours, plus lost and
+              damaged items.
             </p>
 
             {attention.length === 0 ? (
