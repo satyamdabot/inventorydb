@@ -42,8 +42,8 @@ const WORK: Tile[] = [
   },
   {
     href: "/handover/receipts",
-    title: "Sent receipts",
-    desc: "View and download every sent receipt. Admins can edit or delete.",
+    title: "receipts",
+    desc: "View and download every receipt. Admins can edit or delete.",
     icon: "database",
     roles: ["admin", "im", "rig"],
   },
