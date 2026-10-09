@@ -208,47 +208,100 @@ export async function buildReceiptPdf(
 
   y = Math.min(y, A4[1] - margin - qrSize) - 30;
 
-  // Handover details.
+  // From / To boxes, side by side.
+  const ensureSpace = (needed: number, redraw?: () => void) => {
+    if (y - needed < margin) {
+      page = doc.addPage(A4);
+      y = A4[1] - margin;
+      redraw?.();
+    }
+  };
+
+  const boxGap = 14;
+  const boxWidth = (contentWidth - boxGap) / 2;
+  const boxHeight = 62;
+
+  const partyBox = (
+    x: number,
+    heading: string,
+    person: string,
+    location: string
+  ) => {
+    page.drawRectangle({
+      x,
+      y: y - boxHeight + 12,
+      width: boxWidth,
+      height: boxHeight,
+      borderColor: line,
+      borderWidth: 1,
+    });
+    const top = y;
+    page.drawText(heading, { x: x + 10, y: top, size: 8.5, font: bold, color: grey });
+    page.drawText("Person", { x: x + 10, y: top - 17, size: 10, font: regular, color: grey });
+    page.drawText(fit(person || "—", bold, 10.5, boxWidth - 80), {
+      x: x + 66, y: top - 17, size: 10.5, font: bold, color: black,
+    });
+    page.drawText("Location", { x: x + 10, y: top - 33, size: 10, font: regular, color: grey });
+    page.drawText(fit(location || "—", regular, 10.5, boxWidth - 80), {
+      x: x + 66, y: top - 33, size: 10.5, font: regular, color: black,
+    });
+  };
+
+  partyBox(margin, "FROM", summary.fromName, summary.fromName);
+  partyBox(margin + boxWidth + boxGap, "TO", summary.toName, summary.toName);
+  y -= boxHeight + 10;
+
+  // Other batch details.
+  const storageCounts = new Map<string, number>();
+  for (const item of summary.items) {
+    const key = item.storage || "Not set";
+    storageCounts.set(key, (storageCounts.get(key) ?? 0) + 1);
+  }
+  const storageBreakdown = [...storageCounts.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([size, count]) => `${size} x ${count}`)
+    .join(", ");
+
+  const itemCountLabel = `${summary.items.length} item${summary.items.length === 1 ? "" : "s"}`;
+
   const facts: [string, string][] = [
-    ["From", summary.fromName || "—"],
-    ["To", summary.toName || "—"],
-    ["Location", summary.hubName || "—"],
+    ["Date & time", `${formatIst(summary.occurredAt)} IST`],
+    ["Items", storageBreakdown ? `${itemCountLabel} (${storageBreakdown})` : itemCountLabel],
   ];
+  if (summary.recordedBy) facts.push(["Recorded by", summary.recordedBy]);
   if (summary.note) facts.push(["Note", summary.note]);
 
   for (const [label, value] of facts) {
-    text(label, margin, 11, regular, grey);
-    const lines = wrap(value, regular, 11, contentWidth - 80);
+    const lines = wrap(value, regular, 10.5, contentWidth - 90);
+    ensureSpace(lines.length * 14 + 6);
+    text(label, margin, 10.5, regular, grey);
     lines.forEach((l, i) => {
-      if (i > 0) y -= 15;
-      text(l, margin + 80, 11);
+      if (i > 0) y -= 14;
+      text(l, margin + 90, 10.5);
     });
-    y -= 18;
+    y -= 17;
   }
 
   y -= 8;
-  text(
-    `${summary.items.length} item${summary.items.length === 1 ? "" : "s"}`,
-    margin,
-    13,
-    bold
-  );
+  text(itemCountLabel, margin, 13, bold);
   y -= 22;
 
-  // Items table.
+  // Items table. The header repeats on each new page; the total comes once, at the end.
   const cols = [
-    { title: "#", width: 24 },
-    { title: "Serial", width: 140 },
-    { title: "Brand", width: 70 },
-    { title: "Model", width: 136 },
-    { title: "Penalty", width: 70 },
-    { title: "Status", width: contentWidth - 440 },
+    { title: "#", width: 22 },
+    { title: "Serial", width: 100 },
+    { title: "Prism no.", width: 58 },
+    { title: "Brand / Model", width: 112 },
+    { title: "Storage", width: 46 },
+    { title: "Colour", width: 40 },
+    { title: "Penalty", width: 56 },
+    { title: "Status", width: contentWidth - 434 },
   ];
 
   const drawRow = (cells: string[], font: PDFFont) => {
     let x = margin;
     cells.forEach((cell, i) => {
-      text(fit(cell, font, 9.5, cols[i].width - 6), x + 2, 9.5, font);
+      text(fit(cell, font, 8.5, cols[i].width - 5), x + 2, 8.5, font);
       x += cols[i].width;
     });
     page.drawLine({
@@ -257,25 +310,23 @@ export async function buildReceiptPdf(
       thickness: 0.6,
       color: line,
     });
-    y -= 20;
+    y -= 19;
   };
 
   const header = cols.map((c) => c.title);
   drawRow(header, bold);
 
   summary.items.forEach((item, index) => {
-    if (y < margin + 140) {
-      page = doc.addPage(A4);
-      y = A4[1] - margin;
-      drawRow(header, bold);
-    }
+    ensureSpace(24, () => drawRow(header, bold));
 
     drawRow(
       [
         String(index + 1),
         item.itemId,
-        item.brand || "—",
-        item.model || "—",
+        item.prismNo || "—",
+        item.model || item.brand || "—",
+        item.storage || "—",
+        item.cardType || "—",
         rupees(item.price) || "Not set",
         STATUS_LABELS[item.statusAfter] ?? item.statusAfter,
       ],
@@ -283,35 +334,72 @@ export async function buildReceiptPdf(
     );
   });
 
+  // Summary and total, after the last item.
   const missingPriceCount = summary.items.filter(
     (item) => formatPrice(item.price) === ""
   ).length;
 
-  text(
+  const totalLabel =
     missingPriceCount > 0 && summary.totalPrice !== null
       ? "Known penalty amounts subtotal"
-      : "Total listed penalty amount",
-    margin + 2,
-    10,
-    bold
-  );
-  text(
-    summary.totalPrice !== null ? rupees(String(summary.totalPrice)) : "Not set",
-    margin + cols.slice(0, 4).reduce((s, c) => s + c.width, 0) + 2,
-    10,
-    bold
-  );
-  y -= 26;
+      : "Total listed penalty amount";
+  const totalValue =
+    summary.totalPrice !== null ? rupees(String(summary.totalPrice)) : "Not set";
+
+  y -= 8;
+  const sumWidth = 260;
+  const sumX = margin + contentWidth - sumWidth;
+  const sumHeight = 70;
+  ensureSpace(sumHeight + 10);
+
+  page.drawRectangle({
+    x: sumX,
+    y: y - sumHeight + 14,
+    width: sumWidth,
+    height: sumHeight,
+    borderColor: line,
+    borderWidth: 1,
+  });
+
+  const sumRow = (label: string, value: string, font: PDFFont, size: number, color = black) => {
+    page.drawText(pdfSafe(label), { x: sumX + 10, y, size, font, color });
+    const v = pdfSafe(value);
+    page.drawText(v, {
+      x: sumX + sumWidth - 10 - font.widthOfTextAtSize(v, size),
+      y,
+      size,
+      font,
+      color: black,
+    });
+  };
+
+  sumRow("Total items", String(summary.items.length), regular, 10, grey);
+  y -= 16;
+  sumRow("Items with a penalty amount", String(summary.items.length - missingPriceCount), regular, 10, grey);
+  y -= 10;
+  page.drawLine({
+    start: { x: sumX + 10, y: y + 2 },
+    end: { x: sumX + sumWidth - 10, y: y + 2 },
+    thickness: 0.6,
+    color: line,
+  });
+  y -= 14;
+  sumRow(totalLabel, totalValue, bold, 11);
+  y -= 34;
 
   if (missingPriceCount > 0) {
-    text(
+    const lines = wrap(
       `${missingPriceCount} item${missingPriceCount === 1 ? " has" : "s have"} no valid stored amount. Missing amounts are excluded from the total and must be verified.`,
-      margin,
-      9,
       regular,
-      grey
+      9,
+      contentWidth
     );
-    y -= 20;
+    ensureSpace(lines.length * 12 + 8);
+    for (const l of lines) {
+      text(l, margin, 9, regular, grey);
+      y -= 12;
+    }
+    y -= 8;
   }
 
   // Responsibility notice, same wording as the on-screen receipt.
@@ -319,18 +407,14 @@ export async function buildReceiptPdf(
     "IMPORTANT — ITEM RESPONSIBILITY: You are responsible for the safekeeping and timely return of the items listed on this receipt. Any loss or damage must be reported immediately. If you are found responsible following review, the applicable penalty may be deducted from your salary, subject to company policy, any required consent, and applicable law. The listed amounts are not an automatic charge.";
 
   const noticeLines = wrap(notice, bold, 9.5, contentWidth - 24);
-  const boxHeight = noticeLines.length * 14 + 16;
-
-  if (y - boxHeight < margin) {
-    page = doc.addPage(A4);
-    y = A4[1] - margin;
-  }
+  const noticeHeight = noticeLines.length * 14 + 16;
+  ensureSpace(noticeHeight + 8);
 
   page.drawRectangle({
     x: margin,
-    y: y - boxHeight + 12,
+    y: y - noticeHeight + 12,
     width: contentWidth,
-    height: boxHeight,
+    height: noticeHeight,
     color: rgb(1, 0.97, 0.97),
     borderColor: rgb(0.73, 0.11, 0.11),
     borderWidth: 1,
@@ -341,6 +425,46 @@ export async function buildReceiptPdf(
     text(l, margin + 12, 9.5, bold, rgb(0.6, 0.11, 0.11));
     y -= 14;
   }
+
+  // Signatures.
+  y -= 30;
+  ensureSpace(80);
+  y -= 30;
+  const sigWidth = (contentWidth - 40) / 2;
+  [
+    { label: "Handed over by", name: summary.fromName, x: margin },
+    { label: "Received by", name: summary.toName, x: margin + sigWidth + 40 },
+  ].forEach((sig) => {
+    page.drawLine({
+      start: { x: sig.x, y },
+      end: { x: sig.x + sigWidth, y },
+      thickness: 0.8,
+      color: rgb(0.33, 0.33, 0.33),
+    });
+    page.drawText(pdfSafe(`${sig.label}: `), { x: sig.x, y: y - 15, size: 10, font: bold, color: black });
+    page.drawText(fit(sig.name || "—", regular, 10, sigWidth - 100), {
+      x: sig.x + bold.widthOfTextAtSize(pdfSafe(`${sig.label}: `), 10),
+      y: y - 15,
+      size: 10,
+      font: regular,
+      color: black,
+    });
+    page.drawText("Signature and date", { x: sig.x, y: y - 29, size: 8.5, font: regular, color: grey });
+  });
+  y -= 50;
+
+  // Footer on every page: receipt link and page number.
+  const pages = doc.getPages();
+  pages.forEach((p: PDFPage, i: number) => {
+    p.drawText(fit(`Receipt link: ${receiptUrl}`, regular, 7.5, contentWidth - 60), {
+      x: margin, y: 22, size: 7.5, font: regular, color: grey,
+    });
+    const label = `Page ${i + 1} of ${pages.length}`;
+    p.drawText(label, {
+      x: margin + contentWidth - regular.widthOfTextAtSize(label, 7.5),
+      y: 22, size: 7.5, font: regular, color: grey,
+    });
+  });
 
   return doc.save();
 }
@@ -399,6 +523,19 @@ async function ensureReceiptsTab(
  */
 export async function archiveReceipt(batchId: string, baseUrl: string) {
   try {
+    await saveReceipt(batchId, baseUrl);
+  } catch (error) {
+    console.error(`[receipt-archive] Could not archive batch ${batchId}:`, error);
+  }
+}
+
+/**
+ * Same as archiveReceipt, but throws a readable error naming the step that
+ * failed. Used by the admin test page at /api/receipt-test.
+ */
+export async function saveReceipt(batchId: string, baseUrl: string) {
+  let step = "reading the batch";
+  try {
     const store = getStore();
     const [events, items, hubs] = await Promise.all([
       store.list("events"),
@@ -408,13 +545,14 @@ export async function archiveReceipt(batchId: string, baseUrl: string) {
 
     const summary = summarizeBatch(events, items, hubs, batchId);
     if (!summary) {
-      console.error(`[receipt-archive] Batch ${batchId} not found.`);
-      return;
+      throw new Error(`Batch ${batchId} not found in the events tab.`);
     }
 
     const receiptUrl = `${baseUrl}/handover/receipt/${encodeURIComponent(batchId)}`;
+    step = "building the PDF";
     const pdf = await buildReceiptPdf(summary, receiptUrl);
 
+    step = "signing in to Google";
     const auth = googleAuth();
     const drive = google.drive({ version: "v3", auth });
     const sheets = google.sheets({ version: "v4", auth });
@@ -444,6 +582,7 @@ export async function archiveReceipt(batchId: string, baseUrl: string) {
 
     const fileName = `${personName} - ${datePart} - ${batchId}.pdf`;
 
+    step = `uploading the PDF to Drive folder ${folderId}`;
     const uploaded = await drive.files.create({
       requestBody: {
         name: fileName,
@@ -462,10 +601,12 @@ export async function archiveReceipt(batchId: string, baseUrl: string) {
       uploaded.data.webViewLink ??
       `https://drive.google.com/file/d/${uploaded.data.id}/view`;
 
+    step = `opening the Receipts tab in sheet ${spreadsheetId}`;
     await ensureReceiptsTab(sheets, spreadsheetId);
 
     const firstEvent = events.find((e) => e.batch_id === batchId);
 
+    step = "adding the row to the Receipts tab";
     await sheets.spreadsheets.values.append({
       spreadsheetId,
       range: `'${RECEIPTS_TAB}'!A1`,
@@ -492,7 +633,10 @@ export async function archiveReceipt(batchId: string, baseUrl: string) {
         ],
       },
     });
+
+    return { fileName, pdfLink };
   } catch (error) {
-    console.error(`[receipt-archive] Could not archive batch ${batchId}:`, error);
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`Failed while ${step}: ${message}`);
   }
 }

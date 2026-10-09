@@ -1,6 +1,10 @@
 import type { Action, Hub, Item, ItemEvent, Status } from "./schema";
 
 export interface ReceiptLine {
+  cardType: string;
+  [x: string]: string;
+  prismNo: string;
+  storage: string;
   itemId: string;
   brand: string;
   model: string;
@@ -16,6 +20,8 @@ export interface ReceiptLine {
 }
 
 export interface BatchSummary {
+  recordedBy: string;
+  recordedBy: any;
   batchId: string;
   action: Action;
   occurredAt: string;
