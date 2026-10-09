@@ -401,38 +401,6 @@ export default async function ReceiptPage({
           are not an automatic charge.
         </p>
 
-        {/* Signatures for the printed copy. */}
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns:
-              "repeat(auto-fit, minmax(min(100%, 240px), 1fr))",
-            gap: 32,
-            marginTop: 24,
-            breakInside: "avoid",
-          }}
-        >
-          {[
-            { label: "Handed over by", name: summary.fromName },
-            { label: "Received by", name: summary.toName },
-          ].map((sig) => (
-            <div key={sig.label}>
-              <div
-                style={{
-                  borderBottom: "1px solid #555",
-                  height: 40,
-                }}
-              />
-              <p style={{ margin: "6px 0 0" }}>
-                <strong>{sig.label}:</strong> {sig.name || "—"}
-              </p>
-              <p className={styles.muted} style={{ margin: 0 }}>
-                Signature and date
-              </p>
-            </div>
-          ))}
-        </div>
-
         <p className={styles.muted} style={{ fontSize: 12 }}>
           Receipt link: {receiptUrl}
         </p>

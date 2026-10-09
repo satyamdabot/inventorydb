@@ -426,33 +426,6 @@ export async function buildReceiptPdf(
     y -= 14;
   }
 
-  // Signatures.
-  y -= 30;
-  ensureSpace(80);
-  y -= 30;
-  const sigWidth = (contentWidth - 40) / 2;
-  [
-    { label: "Handed over by", name: summary.fromName, x: margin },
-    { label: "Received by", name: summary.toName, x: margin + sigWidth + 40 },
-  ].forEach((sig) => {
-    page.drawLine({
-      start: { x: sig.x, y },
-      end: { x: sig.x + sigWidth, y },
-      thickness: 0.8,
-      color: rgb(0.33, 0.33, 0.33),
-    });
-    page.drawText(pdfSafe(`${sig.label}: `), { x: sig.x, y: y - 15, size: 10, font: bold, color: black });
-    page.drawText(fit(sig.name || "—", regular, 10, sigWidth - 100), {
-      x: sig.x + bold.widthOfTextAtSize(pdfSafe(`${sig.label}: `), 10),
-      y: y - 15,
-      size: 10,
-      font: regular,
-      color: black,
-    });
-    page.drawText("Signature and date", { x: sig.x, y: y - 29, size: 8.5, font: regular, color: grey });
-  });
-  y -= 50;
-
   // Footer on every page: receipt link and page number.
   const pages = doc.getPages();
   pages.forEach((p: PDFPage, i: number) => {
