@@ -131,25 +131,6 @@ export default async function PeoplePage({
     return matchesRole && matchesCity;
   });
 
-  // Identify pre-existing duplicate emails without hiding people.
-  const emailCounts = new Map<string, number>();
-
-  for (const person of people) {
-  if (person.active === "false") continue; // ignore deactivated records
-  const email = normalize(person.linked_user ?? "");
-
-    if (email) {
-      emailCounts.set(
-        email,
-        (emailCounts.get(email) ?? 0) + 1
-      );
-    }
-  }
-
-  const duplicateEmailCount = [...emailCounts.values()]
-    .filter((count) => count > 1)
-    .length;
-
   const bangaloreHub =
     activeHubs.find(
       (hub) => normalize(hub.hub_id) === "bangalore"
@@ -198,16 +179,6 @@ export default async function PeoplePage({
       {done === "saved" && (
         <p className={styles.ok} role="status">
           Person updated successfully.
-        </p>
-      )}
-
-      {duplicateEmailCount > 0 && (
-        <p className={styles.error}>
-          {duplicateEmailCount} email address
-          {duplicateEmailCount === 1 ? " is" : "es are"} already
-          assigned to multiple people. Affected records are
-          marked below. Review them rather than deleting
-          historical identities.
         </p>
       )}
 
@@ -414,14 +385,6 @@ export default async function PeoplePage({
                   )
                 : activeHubs;
 
-            const email = normalize(
-              person.linked_user ?? ""
-            );
-
-            const hasDuplicateEmail =
-              Boolean(email) &&
-              (emailCounts.get(email) ?? 0) > 1;
-
             return (
               <div
                 key={JSON.stringify([
@@ -433,16 +396,6 @@ export default async function PeoplePage({
                   person.active,
                 ])}
               >
-                {hasDuplicateEmail && (
-                  <p
-                    className={styles.error}
-                    style={{ marginBottom: 6 }}
-                  >
-                    This email is assigned to more than one
-                    person. Review this record.
-                  </p>
-                )}
-
                 <PersonRow
                   person={person}
                   hubs={editingHubs}
