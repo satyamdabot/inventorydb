@@ -43,7 +43,7 @@
 }
 
 .buttonSecondary {
-  composes: button;
+  color-scheme: button;
   background: transparent;
   color: inherit;
 }
