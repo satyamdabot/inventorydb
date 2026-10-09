@@ -199,16 +199,16 @@ export async function SummaryKpis({
     {
       label: "256 GB",
       count: fleet.storage256,
-      bg: "#e0f2fe",
-      border: "#0ea5e9",
-      text: "#0c4a6e",
+      bg: "#e0e7ff",
+      border: "#6366f1",
+      text: "#312e81",
     },
     {
       label: "Black cards",
       count: fleet.black,
-      bg: "#111827",
-      border: "#9ca3af",
-      text: "#f9fafb",
+      bg: "#dcfce7",
+      border: "#16a34a",
+      text: "#14532d",
     },
     {
       label: "Green cards",
