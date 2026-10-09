@@ -243,7 +243,7 @@ export default async function ReceiptPage({
 
           {summary.recordedBy && (
             <>
-              <dt>Recorded by</dt>
+              <dt>Recorded by (email ID)</dt>
               <dd>{summary.recordedBy}</dd>
             </>
           )}
@@ -401,9 +401,6 @@ export default async function ReceiptPage({
           are not an automatic charge.
         </p>
 
-        <p className={styles.muted} style={{ fontSize: 12 }}>
-          Receipt link: {receiptUrl}
-        </p>
       </div>
 
       {/* Keep the existing print button outside printable content. */}

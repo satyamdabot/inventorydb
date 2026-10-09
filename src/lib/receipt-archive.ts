@@ -268,16 +268,16 @@ export async function buildReceiptPdf(
     ["Date & time", `${formatIst(summary.occurredAt)} IST`],
     ["Items", storageBreakdown ? `${itemCountLabel} (${storageBreakdown})` : itemCountLabel],
   ];
-  if (summary.recordedBy) facts.push(["Recorded by", summary.recordedBy]);
+  if (summary.recordedBy) facts.push(["Recorded by (email ID)", summary.recordedBy]);
   if (summary.note) facts.push(["Note", summary.note]);
 
   for (const [label, value] of facts) {
-    const lines = wrap(value, regular, 10.5, contentWidth - 90);
+    const lines = wrap(value, regular, 10.5, contentWidth - 130);
     ensureSpace(lines.length * 14 + 6);
     text(label, margin, 10.5, regular, grey);
     lines.forEach((l, i) => {
       if (i > 0) y -= 14;
-      text(l, margin + 90, 10.5);
+      text(l, margin + 130, 10.5);
     });
     y -= 17;
   }
@@ -426,12 +426,9 @@ export async function buildReceiptPdf(
     y -= 14;
   }
 
-  // Footer on every page: receipt link and page number.
+  // Footer on every page: page number.
   const pages = doc.getPages();
   pages.forEach((p: PDFPage, i: number) => {
-    p.drawText(fit(`Receipt link: ${receiptUrl}`, regular, 7.5, contentWidth - 60), {
-      x: margin, y: 22, size: 7.5, font: regular, color: grey,
-    });
     const label = `Page ${i + 1} of ${pages.length}`;
     p.drawText(label, {
       x: margin + contentWidth - regular.widthOfTextAtSize(label, 7.5),
