@@ -148,7 +148,7 @@ export async function applyCorrection(formData: FormData) {
 /**
  * ADD ITEM: Admin, IM and Rig.
  *
- * Blank homeHub defaults to active Bangalore.
+ * Home hub is required; there is no default.
  * Store storage/colour in attributes and penalty in price.
  */
 export async function addItem(formData: FormData) {
@@ -206,25 +206,9 @@ export async function addItem(formData: FormData) {
     (hub) => hub.active !== "false"
   );
 
-  // No manual hub selection is necessary when Bangalore exists.
+  // Home hub is mandatory. There is no default hub.
   if (!input.homeHub) {
-    const bangaloreHub =
-      activeHubs.find(
-        (hub) =>
-          hub.hub_id.trim().toLowerCase() === "bangalore"
-      ) ??
-      activeHubs.find(
-        (hub) =>
-          hub.name.trim().toLowerCase() === "bangalore"
-      );
-
-    if (!bangaloreHub) {
-      reject(
-        "The default Bangalore hub is unavailable. Please select another home hub."
-      );
-    }
-
-    input.homeHub = bangaloreHub.hub_id;
+    reject("Select the home hub.");
   }
 
   // Validate submitted values on the server, not only in the dropdown.

@@ -300,16 +300,19 @@ export default function AddCardForm({
           />
         </label>
 
-        {/* No default hub and no automatic Bangalore selection. */}
+        {/* Home hub is mandatory. No default hub is selected. */}
         <label style={fieldStyle}>
-          <span>Home hub</span>
+          <span>Home hub *</span>
 
           <select
             name="homeHub"
             defaultValue=""
+            required
             style={inputStyle}
           >
-            <option value="">Select home hub</option>
+            <option value="" disabled>
+              Select home hub
+            </option>
 
             {(hubs ?? []).map((hub) => (
               <option
