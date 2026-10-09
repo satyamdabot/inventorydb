@@ -3,22 +3,58 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { toDataURL as qrToDataURL } from "qrcode";
 import { requireRole } from "@/lib/authz";
-import { STATUS_LABELS } from "@/lib/labels";
 import { formatPrice, summarizeBatch } from "@/lib/receipt";
 import { getStore } from "@/lib/store";
 import { formatIst } from "@/lib/time";
 import styles from "../../form.module.css";
 import PrintButton from "./PrintButton";
 
+// One row on the receipt (same shape as summary.items).
+type ReceiptItem = NonNullable<ReturnType<typeof summarizeBatch>>["items"][number];
+
 const ACTION_TITLE: Record<string, string> = {
   check_out: "Handover receipt",
-  receive: "Receipt confirmation",
+  receive: "Return receipt",
   correct: "Correction record",
 };
 
 // Next.js serves public/Instawork.svg at this URL.
 // The path is case-sensitive on Vercel, so the capital "I" must match the file name.
 const RECEIPT_LOGO = "/Instawork.svg";
+
+/** Read a string field from a store record, or "" if missing. */
+function field(record: unknown, name: string): string {
+  if (record && typeof record === "object" && name in record) {
+    const value = (record as Record<string, unknown>)[name];
+    return value == null ? "" : String(value);
+  }
+  return "";
+}
+
+/**
+ * Email for a person on the receipt.
+ * Order: the person's own email, then the linked user's email, then "".
+ * Accepts any record shape, so it works with your Person and AppUser types.
+ */
+function lookupEmail(
+  personId: unknown,
+  people: readonly unknown[],
+  users: readonly unknown[]
+): string {
+  const id = personId == null ? "" : String(personId);
+  if (!id) return "";
+
+  const person = people.find((p) => field(p, "id") === id);
+  const ownEmail = field(person, "email");
+  if (ownEmail) return ownEmail;
+
+  const userId = field(person, "userId");
+  const user =
+    (userId && users.find((u) => field(u, "id") === userId)) ||
+    users.find((u) => field(u, "personId") === id);
+
+  return field(user, "email");
+}
 
 /**
  * Build the receipt URL used in the QR code.
@@ -46,18 +82,15 @@ export default async function ReceiptPage({
   const { batch } = await params;
   const store = getStore();
 
-  const [events, items, hubs] = await Promise.all([
+  const [events, items, hubs, people, users] = await Promise.all([
     store.list("events"),
     store.list("items"),
     store.list("hubs"),
+    store.list("people"),
+    store.list("users"),
   ]);
 
-  const summary = summarizeBatch(
-    events,
-    items,
-    hubs,
-    batch
-  );
+  const summary = summarizeBatch(events, items, hubs, batch);
 
   if (!summary) {
     notFound();
@@ -78,8 +111,6 @@ export default async function ReceiptPage({
   const missingPriceCount = summary.items.filter(
     (item) => formatPrice(item.price) === ""
   ).length;
-
-  const pricedCount = summary.items.length - missingPriceCount;
 
   // Count by storage size, e.g. "256 GB × 20, 512 GB × 6".
   const storageCounts = new Map<string, number>();
@@ -106,16 +137,28 @@ export default async function ReceiptPage({
       ? formatPrice(String(summary.totalPrice))
       : "Not set";
 
+  // Return receipts only: what was sent, what came back, what is still out.
+  const ret = summary.returnInfo;
+  const missingCount = ret?.missing.length ?? 0;
+  const returnTotalLabel =
+    ret && ret.missingWithoutPrice > 0 && missingCount > 0
+      ? "Known penalty amounts subtotal"
+      : "Total penalty (items not returned)";
+
   const fromLocation = summary.fromHubName || "—";
   const toLocation = summary.hubName || "—";
+
+  // Email IDs of the people on the receipt (blank if not linked).
+  const peopleList = people as readonly unknown[];
+  const userList = users as readonly unknown[];
+  const fromEmail = lookupEmail(summary.fromId, peopleList, userList);
+  const toEmail = lookupEmail(summary.toId, peopleList, userList);
 
   return (
     <main className={styles.page}>
       {/* Hidden in printed/PDF output. */}
       <p className={`${styles.back} ${styles.noPrint}`}>
-        <Link href="/handover/send">
-          ← Send items
-        </Link>
+        <Link href="/handover/send">← Send items</Link>
       </p>
 
       <div className={styles.receipt}>
@@ -152,14 +195,10 @@ export default async function ReceiptPage({
               }}
             />
 
-            <h1>
-              {ACTION_TITLE[summary.action] ??
-                "Batch record"}
-            </h1>
+            <h1>{ACTION_TITLE[summary.action] ?? "Batch record"}</h1>
 
             <p className={styles.muted}>
-              Batch {summary.batchId} ·{" "}
-              {formatIst(summary.occurredAt)} IST
+              Batch {summary.batchId} · {formatIst(summary.occurredAt)} IST
             </p>
           </div>
 
@@ -203,6 +242,9 @@ export default async function ReceiptPage({
                 <strong>{summary.fromName || "—"}</strong>
               </dd>
 
+              <dt>Email ID</dt>
+              <dd style={{ overflowWrap: "anywhere" }}>{fromEmail || "—"}</dd>
+
               <dt>Location</dt>
               <dd>{fromLocation}</dd>
             </dl>
@@ -224,6 +266,9 @@ export default async function ReceiptPage({
                 <strong>{summary.toName || "—"}</strong>
               </dd>
 
+              <dt>Email ID</dt>
+              <dd style={{ overflowWrap: "anywhere" }}>{toEmail || "—"}</dd>
+
               <dt>Location</dt>
               <dd>{toLocation}</dd>
             </dl>
@@ -241,24 +286,15 @@ export default async function ReceiptPage({
             {storageBreakdown && ` (${storageBreakdown})`}
           </dd>
 
-          {summary.recordedBy && (
-            <>
-              <dt>Recorded by</dt>
-              <dd>{summary.recordedBy}</dd>
-            </>
-          )}
-
           {summary.note && (
             <>
               <dt>Note</dt>
-              <dd style={{ overflowWrap: "anywhere" }}>
-                {summary.note}
-              </dd>
+              <dd style={{ overflowWrap: "anywhere" }}>{summary.note}</dd>
             </>
           )}
         </dl>
 
-        <h2>{itemCountLabel}</h2>
+        <h2>{ret ? `${itemCountLabel} returned` : itemCountLabel}</h2>
 
         {/* Item list. The header row repeats on each printed page.
             There is no table footer, so the total prints only once, at the end. */}
@@ -272,138 +308,214 @@ export default async function ReceiptPage({
               <th scope="col">Storage</th>
               <th scope="col">Colour</th>
               <th scope="col">Penalty</th>
-              <th scope="col">Status</th>
             </tr>
           </thead>
 
           <tbody>
             {summary.items.map((item, index) => (
-              <tr
-                key={item.itemId}
-                style={{ breakInside: "avoid" }}
-              >
+              <tr key={item.itemId} style={{ breakInside: "avoid" }}>
                 <td>{index + 1}</td>
-
-                <td style={{ overflowWrap: "anywhere" }}>
-                  {item.itemId}
-                </td>
-
+                <td style={{ overflowWrap: "anywhere" }}>{item.itemId}</td>
                 <td style={{ overflowWrap: "anywhere" }}>
                   {item.prismNo || "—"}
                 </td>
-
-                <td>
-                  {item.model ||
-                    item.brand ||
-                    "—"}
-                </td>
-
-                <td style={{ whiteSpace: "nowrap" }}>
-                  {item.storage || "—"}
-                </td>
-
+                <td>{item.model || item.brand || "—"}</td>
+                <td style={{ whiteSpace: "nowrap" }}>{item.storage || "—"}</td>
                 <td>{item.cardType || "—"}</td>
 
                 {/* Read the amount saved in items.price.
-                    This page does not change or charge it. */}
+                    This page does not change or charge it.
+                    On a return receipt, items that came back have no penalty. */}
                 <td style={{ whiteSpace: "nowrap" }}>
-                  {formatPrice(item.price) || "Not set"}
-                </td>
-
-                <td>
-                  {STATUS_LABELS[item.statusAfter] ??
-                    item.statusAfter}
+                  {ret
+                    ? formatPrice("0")
+                    : formatPrice(item.price) || "Not set"}
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
 
-        {/* Summary and total: always after the last item. */}
-        <section
-          style={{
-            display: "grid",
-            gap: 6,
-            marginLeft: "auto",
-            width: "min(100%, 360px)",
-            padding: "12px 14px",
-            border: "1px solid #d9d9d9",
-            borderRadius: 8,
-            breakInside: "avoid",
-          }}
-        >
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-            <span className={styles.muted}>Total items</span>
-            <span>{summary.items.length}</span>
-          </div>
+        {/* RETURN RECEIPT: items that were sent but not received, then the summary. */}
+        {ret && missingCount > 0 && (
+          <>
+            <h2 style={{ marginTop: 20 }}>Not returned ({missingCount})</h2>
 
-          <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
-            <span className={styles.muted}>Items with a penalty amount</span>
-            <span>{pricedCount}</span>
-          </div>
+            <table className={styles.table}>
+              <thead>
+                <tr>
+                  <th scope="col">#</th>
+                  <th scope="col">Serial</th>
+                  <th scope="col">Prism no.</th>
+                  <th scope="col">Brand / Model</th>
+                  <th scope="col">Storage</th>
+                  <th scope="col">Colour</th>
+                  <th scope="col">Penalty</th>
+                </tr>
+              </thead>
 
-          <div
+              <tbody>
+                {ret.missing.map((item: ReceiptItem, index: number) => (
+                  <tr key={item.itemId} style={{ breakInside: "avoid" }}>
+                    <td>{index + 1}</td>
+                    <td style={{ overflowWrap: "anywhere" }}>{item.itemId}</td>
+                    <td style={{ overflowWrap: "anywhere" }}>
+                      {item.prismNo || "—"}
+                    </td>
+                    <td>{item.model || item.brand || "—"}</td>
+                    <td style={{ whiteSpace: "nowrap" }}>
+                      {item.storage || "—"}
+                    </td>
+                    <td>{item.cardType || "—"}</td>
+                    <td style={{ whiteSpace: "nowrap" }}>
+                      {formatPrice(item.price) || "Not set"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </>
+        )}
+
+        {ret && (
+          <section
             style={{
-              display: "flex",
-              justifyContent: "space-between",
-              gap: 12,
-              paddingTop: 8,
-              marginTop: 2,
-              borderTop: "1px solid #d9d9d9",
-              fontSize: "1.05rem",
+              display: "grid",
+              gap: 6,
+              marginLeft: "auto",
+              marginTop: 12,
+              width: "min(100%, 360px)",
+              padding: "12px 14px",
+              border: "1px solid #d9d9d9",
+              borderRadius: 8,
+              breakInside: "avoid",
             }}
           >
-            <strong>{totalLabel}</strong>
-            <strong style={{ whiteSpace: "nowrap" }}>
-              {totalValue}
-            </strong>
-          </div>
-        </section>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+              <span className={styles.muted}>Items sent</span>
+              <span>{ret.sentCount}</span>
+            </div>
 
-        {missingPriceCount > 0 && (
+            {ret.earlierReturnedCount > 0 && (
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                <span className={styles.muted}>Returned earlier</span>
+                <span>{ret.earlierReturnedCount}</span>
+              </div>
+            )}
+
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+              <span className={styles.muted}>Returned now</span>
+              <span>{ret.returnedCount}</span>
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+              <span className={styles.muted}>Not returned</span>
+              <span>{missingCount}</span>
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                gap: 12,
+                paddingTop: 8,
+                marginTop: 2,
+                borderTop: "1px solid #d9d9d9",
+                fontSize: "1.05rem",
+              }}
+            >
+              <strong>{returnTotalLabel}</strong>
+              <strong style={{ whiteSpace: "nowrap" }}>
+                {formatPrice(String(ret.totalPenalty))}
+              </strong>
+            </div>
+          </section>
+        )}
+
+        {ret && ret.missingWithoutPrice > 0 && (
           <p className={styles.muted}>
-            {missingPriceCount} item
-            {missingPriceCount === 1
-              ? " has"
-              : "s have"}{" "}
-            no valid stored amount. Missing amounts are
-            excluded from the total and must be verified.
+            {ret.missingWithoutPrice} item
+            {ret.missingWithoutPrice === 1 ? " has" : "s have"} no valid
+            stored amount. Missing amounts are excluded from the total and
+            must be verified.
           </p>
         )}
 
-        {/* Use only if this reflects approved company policy.
-            The receipt itself does not authorize a deduction. */}
-        <p
-          style={{
-            marginTop: 8,
-            padding: "12px 14px",
-            border: "1px solid #b91c1c",
-            borderLeft: "4px solid #b91c1c",
-            borderRadius: 6,
-            backgroundColor: "#fff7f7",
-            color: "#991b1b",
-            fontSize: 14,
-            lineHeight: 1.6,
-            fontWeight: 600,
-            breakInside: "avoid",
-          }}
-        >
-          <strong>
-            IMPORTANT — ITEM RESPONSIBILITY:
-          </strong>{" "}
-          You are responsible for the safekeeping and timely
-          return of the items listed on this receipt. Any
-          loss or damage must be reported immediately. If
-          you are found responsible following review, the
-          applicable penalty may be deducted from your
-          salary, subject to company policy, any required
-          consent, and applicable law. The listed amounts
-          are not an automatic charge.
-        </p>
+        {/* SEND RECEIPT: summary and total, always after the last item. */}
+        {!ret && (
+          <>
+            <section
+              style={{
+                display: "grid",
+                gap: 6,
+                marginLeft: "auto",
+                width: "min(100%, 360px)",
+                padding: "12px 14px",
+                border: "1px solid #d9d9d9",
+                borderRadius: 8,
+                breakInside: "avoid",
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                <span className={styles.muted}>Total items</span>
+                <span>{summary.items.length}</span>
+              </div>
 
-        <p className={styles.muted} style={{ fontSize: 12 }}>
-          Receipt link: {receiptUrl}
-        </p>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  paddingTop: 8,
+                  marginTop: 2,
+                  borderTop: "1px solid #d9d9d9",
+                  fontSize: "1.05rem",
+                }}
+              >
+                <strong>{totalLabel}</strong>
+                <strong style={{ whiteSpace: "nowrap" }}>{totalValue}</strong>
+              </div>
+            </section>
+
+            {missingPriceCount > 0 && (
+              <p className={styles.muted}>
+                {missingPriceCount} item
+                {missingPriceCount === 1 ? " has" : "s have"} no valid stored
+                amount. Missing amounts are excluded from the total and must
+                be verified.
+              </p>
+            )}
+          </>
+        )}
+
+        {/* Use only if this reflects approved company policy.
+            The receipt itself does not authorize a deduction.
+            On a return receipt it only shows when something is still out. */}
+        {(!ret || missingCount > 0) && (
+          <p
+            style={{
+              marginTop: 8,
+              padding: "12px 14px",
+              border: "1px solid #b91c1c",
+              borderLeft: "4px solid #b91c1c",
+              borderRadius: 6,
+              backgroundColor: "#fff7f7",
+              color: "#991b1b",
+              fontSize: 14,
+              lineHeight: 1.6,
+              fontWeight: 600,
+              breakInside: "avoid",
+            }}
+          >
+            <strong>IMPORTANT — ITEM RESPONSIBILITY:</strong> You are
+            responsible for the safekeeping and timely return of the items
+            listed on this receipt. Any loss or damage must be reported
+            immediately. If you are found responsible following review, the
+            applicable penalty may be deducted from your salary, subject to
+            company policy, any required consent, and applicable law. The
+            listed amounts are not an automatic charge.
+          </p>
+        )}
       </div>
 
       {/* Keep the existing print button outside printable content. */}
