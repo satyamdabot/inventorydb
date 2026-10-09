@@ -132,11 +132,17 @@ export default async function InventoryPage({
 
   const store = getStore();
 
-  const [items, hubs, people] = await Promise.all([
+  const [items, hubs, people, events] = await Promise.all([
     store.list("items"),
     store.list("hubs"),
     store.list("people"),
+    store.list("events"),
   ]);
+
+  // Each item's latest movement, used for the From / To columns.
+  const eventById = new Map(
+    events.map((e) => [e.event_id, e])
+  );
 
   const hubName = new Map(
     hubs.map((h) => [h.hub_id, h.name])
@@ -193,7 +199,7 @@ export default async function InventoryPage({
 
   // Includes optional Admin checkbox and holder-specific Since column.
   const columnCount =
-    12 + (isAdmin ? 1 : 0) + (holder ? 1 : 0);
+    14 + (isAdmin ? 1 : 0) + (holder ? 1 : 0);
 
   const table = (
     <div
@@ -222,6 +228,8 @@ export default async function InventoryPage({
             <th scope="col">Price / Penalty</th>
             <th scope="col">Attributes</th>
             <th scope="col">Status</th>
+            <th scope="col">From</th>
+            <th scope="col">To</th>
             <th scope="col">Current hub</th>
             <th scope="col">Holder</th>
             {holder && <th scope="col">Since</th>}
@@ -244,6 +252,17 @@ export default async function InventoryPage({
 
               const itemUrl =
                 `/inventory/${encodeURIComponent(item.item_id)}`;
+
+              // From / To of the latest movement (send, receive or correction).
+              const last = eventById.get(item.last_event_id);
+
+              const fromHub = last?.from_hub
+                ? (hubName.get(last.from_hub) ?? last.from_hub)
+                : "";
+
+              const toHub = last?.hub
+                ? (hubName.get(last.hub) ?? last.hub)
+                : "";
 
               return (
                 <tr key={item.item_id}>
@@ -305,6 +324,36 @@ export default async function InventoryPage({
 
                   <td>
                     {STATUS_LABELS[item.status] ?? item.status}
+                  </td>
+
+                  <td>
+                    {last?.from_person || fromHub ? (
+                      <>
+                        {last?.from_person || "—"}
+                        {fromHub && (
+                          <div className={styles.muted}>
+                            {fromHub}
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      "—"
+                    )}
+                  </td>
+
+                  <td>
+                    {last?.to_person || toHub ? (
+                      <>
+                        {last?.to_person || "—"}
+                        {toHub && (
+                          <div className={styles.muted}>
+                            {toHub}
+                          </div>
+                        )}
+                      </>
+                    ) : (
+                      "—"
+                    )}
                   </td>
 
                   <td>
