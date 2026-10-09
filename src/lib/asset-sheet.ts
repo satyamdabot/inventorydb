@@ -34,7 +34,9 @@ export async function loadAssetRecords(): Promise<AssetRecord[]> {
 
   const api = google.sheets({ version: "v4", auth });
 
-  const results = await Promise.all(
+  // Read each tab separately so one missing or renamed tab
+  // does not stop lookups in the other tab.
+  const settled = await Promise.allSettled(
     TABS.map(async (tab) => {
       const result = await api.spreadsheets.values.get({
         spreadsheetId,
@@ -72,6 +74,30 @@ export async function loadAssetRecords(): Promise<AssetRecord[]> {
       return records;
     })
   );
+
+  const failures: string[] = [];
+  const results: AssetRecord[][] = [];
+
+  settled.forEach((outcome, index) => {
+    if (outcome.status === "fulfilled") {
+      results.push(outcome.value);
+    } else {
+      const reason =
+        outcome.reason instanceof Error
+          ? outcome.reason.message
+          : String(outcome.reason);
+      failures.push(`"${TABS[index]}" tab: ${reason}`);
+    }
+  });
+
+  if (failures.length) {
+    console.error(`[asset-sheet] ${failures.join(" | ")}`);
+  }
+
+  // Every tab failed: report the real reason to the caller.
+  if (results.length === 0) {
+    throw new Error(failures.join(" | "));
+  }
 
   const records = results.flat();
 
