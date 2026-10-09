@@ -2,14 +2,16 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { randomUUID } from "node:crypto";
 import { requireRole } from "@/lib/authz";
 import { getStore } from "@/lib/store";
+import { istTimestamp } from "@/lib/time";
 
 export async function deleteInventoryItem(
   formData: FormData
 ): Promise<void> {
   // Server-side protection, even if someone bypasses the UI.
-  await requireRole("admin");
+  const admin = await requireRole("admin");
 
   const itemId = String(
     formData.get("itemId") ?? ""
@@ -21,6 +23,10 @@ export async function deleteInventoryItem(
 
   const acknowledged =
     formData.get("deleteHistory") === "yes";
+  
+  const reason = String(
+    formData.get("reason") ?? ""
+  ).trim().slice(0, 500);  
 
   if (!itemId) {
     redirect(
@@ -46,9 +52,50 @@ export async function deleteInventoryItem(
   }
 
   let failure = false;
+  const store = getStore();
 
   try {
-    await getStore().deleteItemAndHistory(itemId);
+    // Snapshot the item and its history before they are removed.
+    const [item, history] = await Promise.all([
+      store.getItem(itemId),
+      store.getHistory(itemId),
+    ]);
+
+    const result = await store.deleteItemAndHistory(itemId);
+
+    // AUDIT LOG: which admin deleted the item, and when.
+    // A logging problem must not undo or hide a completed deletion.
+    try {
+      let historyJson = JSON.stringify(history ?? []);
+      if (historyJson.length > 45000) {
+        historyJson = historyJson.slice(0, 45000) + "…(trimmed)";
+      }
+
+      await store.logDeletion({
+        deletion_id: `d-${randomUUID().slice(0, 8)}`,
+        deleted_at: istTimestamp(),
+        deleted_by_email: admin.email ?? "unknown",
+        deleted_by_name: admin.name ?? "",
+        item_id: item?.item_id ?? itemId,
+        prism_no: item?.prism_no ?? "",
+        brand: item?.brand ?? "",
+        model: item?.model ?? "",
+        price: item?.price ?? "",
+        attributes: item?.attributes ?? "",
+        status: item?.status ?? "",
+        current_hub: item?.current_hub ?? "",
+        current_holder: item?.current_holder ?? "",
+        home_hub: item?.home_hub ?? "",
+        events_deleted: String(result.deletedEvents),
+        reason,
+        history_json: historyJson,
+      });
+    } catch (logError) {
+      console.error(
+        `Item ${itemId} was deleted, but the deletions log could not be written:`,
+        logError
+      );
+    }
   } catch (error) {
     // Detailed diagnostic stays on the server.
     console.error("Inventory deletion failed:", error);
@@ -66,6 +113,7 @@ export async function deleteInventoryItem(
   }
 
   revalidatePath("/inventory");
+  revalidatePath("/admin/deletions");
   revalidatePath("/inventory/[id]", "page");
   revalidatePath("/dashboard");
   revalidatePath("/dashboard/analytics");

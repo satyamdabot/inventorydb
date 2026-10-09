@@ -109,6 +109,19 @@ export class Store {
     return findInconsistencies(items, events);
   }
 
+    /**
+   * Record a permanent deletion in the "deletions" tab.
+   * Creates the tab the first time it is needed.
+   */
+  async logDeletion(row: TabRows["deletions"]) {
+    try {
+      await this.backend.append("deletions", [row]);
+    } catch {
+      await this.backend.ensureTabs();
+      await this.backend.append("deletions", [row]);
+    }
+  }
+  
   /**
    * Permanent deletion.
    * The calling server action must enforce Admin authorization.

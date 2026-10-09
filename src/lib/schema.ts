@@ -39,6 +39,25 @@ export const TABS = {
   item_types: ["type", "fields"],
   users: ["email", "role", "person_id", "active"],
   status_limits: ["status", "max_days"],
+  deletions: [
+    "deletion_id",
+    "deleted_at",
+    "deleted_by_email",
+    "deleted_by_name",
+    "item_id",
+    "prism_no",
+    "brand",
+    "model",
+    "price",
+    "attributes",
+    "status",
+    "current_hub",
+    "current_holder",
+    "home_hub",
+    "events_deleted",
+    "reason",
+    "history_json",
+  ],
 } as const;
 
 export type TabName = keyof typeof TABS;
@@ -136,6 +155,26 @@ export interface AppUser extends Row {
   active: string; // blank counts as active
 }
 
+export interface Deletion extends Row {
+  deletion_id: string;
+  deleted_at: string;
+  deleted_by_email: string;
+  deleted_by_name: string;
+  item_id: string;
+  prism_no: string;
+  brand: string;
+  model: string;
+  price: string;
+  attributes: string;
+  status: string;
+  current_hub: string;
+  current_holder: string;
+  home_hub: string;
+  events_deleted: string;
+  reason: string;
+  history_json: string;
+}
+
 export interface TabRows {
   items: Item;
   events: ItemEvent;
@@ -144,4 +183,5 @@ export interface TabRows {
   item_types: Row;
   users: AppUser;
   status_limits: Row;
+  deletions: Deletion;
 }

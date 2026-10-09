@@ -68,6 +68,31 @@ function DeleteFields({
         />
       </label>
 
+            <label
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 8,
+        }}
+      >
+        <span>Reason for deleting (saved in the deletions log):</span>
+
+        <input
+          name="reason"
+          type="text"
+          maxLength={500}
+          readOnly={pending}
+          placeholder="e.g. Added twice by mistake"
+          style={{
+            padding: 12,
+            border: "1px solid #94a3b8",
+            borderRadius: 6,
+            width: "100%",
+            boxSizing: "border-box",
+          }}
+        />
+      </label>
+
       <label
         style={{
           display: "flex",

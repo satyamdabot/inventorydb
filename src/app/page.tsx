@@ -72,10 +72,17 @@ const ADMIN: Tile[] = [
     roles: ["admin"],
   },
   {
-    href: "/admin/users",
+     href: "/admin/users",
     title: "Manage users",
     desc: "Who can sign in, and as what.",
     icon: "shield",
+    roles: ["admin"],
+  },
+  {
+    href: "/admin/deletions",
+    title: "Deleted items log",
+    desc: "Which admin deleted which item, and when.",
+    icon: "clock",
     roles: ["admin"],
   },
 ];
