@@ -186,11 +186,37 @@ export async function SummaryKpis({
       ? null
       : Math.round(d.utilization);
 
+  // Each tile has its own colour so the four are easy to tell apart:
+  // storage in blues, card colour in the card's real colour.
   const fleetDetails = [
-    { label: "512 GB", count: fleet.storage512 },
-    { label: "256 GB", count: fleet.storage256 },
-    { label: "Black cards", count: fleet.black },
-    { label: "Green cards", count: fleet.green },
+    {
+      label: "512 GB",
+      count: fleet.storage512,
+      bg: "#e0e7ff",
+      border: "#6366f1",
+      text: "#312e81",
+    },
+    {
+      label: "256 GB",
+      count: fleet.storage256,
+      bg: "#e0f2fe",
+      border: "#0ea5e9",
+      text: "#0c4a6e",
+    },
+    {
+      label: "Black cards",
+      count: fleet.black,
+      bg: "#111827",
+      border: "#9ca3af",
+      text: "#f9fafb",
+    },
+    {
+      label: "Green cards",
+      count: fleet.green,
+      bg: "#dcfce7",
+      border: "#16a34a",
+      text: "#14532d",
+    },
   ];
 
   const cards: SummaryCard[] = [
@@ -347,7 +373,7 @@ export async function SummaryKpis({
                   gap: 8,
                 }}
               >
-                {fleetDetails.map((detail) => (
+                                {fleetDetails.map((detail) => (
                   <span
                     key={detail.label}
                     style={{
@@ -356,15 +382,17 @@ export async function SummaryKpis({
                       gap: 4,
                       padding: "8px 10px",
                       minWidth: 0,
-                      border: "1px solid #cbd5e1",
+                      border: `1px solid ${detail.border}`,
+                      borderLeft: `5px solid ${detail.border}`,
                       borderRadius: 8,
-                      backgroundColor: "#f8fafc",
-                      color: "#0f172a",
+                      backgroundColor: detail.bg,
+                      color: detail.text,
                     }}
                   >
                     <span
                       style={{
                         fontSize: 12,
+                        fontWeight: 600,
                         whiteSpace: "normal",
                       }}
                     >
