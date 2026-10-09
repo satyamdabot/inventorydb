@@ -460,6 +460,7 @@ export async function SummaryKpis({
                   marginTop: 8,
                   fontSize: 12,
                   lineHeight: 1.4,
+                  color: "#fbbf24",
                 }}
               >
                 Storage and colour describe the same fleet.
