@@ -42,8 +42,8 @@ const WORK: Tile[] = [
   },
   {
     href: "/handover/receipts",
-    title: "Receipts",
-    desc: "View and download every receipt. Admins can edit or delete.",
+    title: "Sent receipts",
+    desc: "View and download every sent receipt. Admins can edit or delete.",
     icon: "database",
     roles: ["admin", "im", "rig"],
   },
@@ -79,7 +79,7 @@ const ADMIN: Tile[] = [
     roles: ["admin"],
   },
   {
-     href: "/admin/users",
+    href: "/admin/users",
     title: "Manage users",
     desc: "Who can sign in, and as what.",
     icon: "shield",
