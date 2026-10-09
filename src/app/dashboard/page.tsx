@@ -70,7 +70,7 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
     {
       label: "In transit",
       value: s.traveling + s.pending,
-      hint: "traveling or waiting",
+      hint: share(s.traveling + s.pending),
       href: inventory({ status: "traveling,pending" }),
       icon: "truck",
       color: "var(--series-4)",
@@ -78,7 +78,7 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
     {
       label: "Lost or damaged",
       value: s.lost + s.damaged,
-      hint: "need follow-up",
+      hint: share(s.lost + s.damaged),
       href: inventory({ status: "lost,damaged" }),
       icon: "alert",
       color: "var(--critical)",
