@@ -1,13 +1,14 @@
 import type { Action, Hub, Item, ItemEvent, Status } from "./schema";
 
 export interface ReceiptLine {
-  cardType: string;
-  [x: string]: string;
-  prismNo: string;
-  storage: string;
   itemId: string;
   brand: string;
   model: string;
+  prismNo: string;
+
+  // From the item's saved attributes, e.g. "256 GB" and "Black".
+  storage: string;
+  cardType: string;
 
   // Original item price, as stored.
   price: string;
@@ -20,15 +21,21 @@ export interface ReceiptLine {
 }
 
 export interface BatchSummary {
-  recordedBy: string;
-  recordedBy: any;
   batchId: string;
   action: Action;
   occurredAt: string;
   fromName: string;
   toName: string;
+
+  // Where the items left from and where they went.
+  fromHubId: string;
+  fromHubName: string;
   hubId: string;
   hubName: string;
+
+  // Signed-in account that recorded the handover, and when.
+  recordedBy: string;
+  recordedAt: string;
   note: string;
   items: ReceiptLine[];
 
@@ -105,6 +112,37 @@ function validatePenaltyAmount(amount: number): number {
   return paise / 100;
 }
 
+/** Read storage and card colour from an item's saved attributes JSON. */
+function readCardDetails(raw: string): { storage: string; cardType: string } {
+  let attributes: Record<string, unknown> = {};
+
+  try {
+    const parsed: unknown = JSON.parse(raw || "{}");
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+      attributes = parsed as Record<string, unknown>;
+    }
+  } catch {
+    // Invalid or missing details are shown as blank.
+  }
+
+  const text = (value: unknown) =>
+    typeof value === "string" || typeof value === "number"
+      ? String(value).trim()
+      : "";
+
+  const capacity = text(attributes.capacity);
+  const compact = capacity.replace(/\s+/g, "").toUpperCase();
+
+  const storage =
+    compact === "512GB" || compact === "512"
+      ? "512 GB"
+      : compact === "256GB" || compact === "256"
+        ? "256 GB"
+        : capacity;
+
+  return { storage, cardType: text(attributes.card_type) };
+}
+
 /**
  * Extract the batch ID from a receipt URL or a plain ID.
  * Removes query strings, fragments and trailing slashes.
@@ -156,9 +194,12 @@ export function summarizeBatch(
     items.map((i) => [i.item_id, i])
   );
 
-  const hubName =
-    hubs.find((h) => h.hub_id === first.hub)?.name ??
-    first.hub;
+  const nameOfHub = (id: string) =>
+    hubs.find((h) => h.hub_id === id)?.name ?? id;
+
+  const hubName = nameOfHub(first.hub);
+  const fromHubId = first.from_hub ?? "";
+  const fromHubName = fromHubId ? nameOfHub(fromHubId) : "";
 
   // Prevent duplicate event rows from applying the same
   // item-level penalty more than once within the batch.
@@ -197,10 +238,15 @@ export function summarizeBatch(
         penaltyApplied.add(r.item_id);
       }
 
+      const details = readCardDetails(item?.attributes ?? "");
+
       return {
         itemId: r.item_id,
         brand: item?.brand ?? "",
         model: item?.model ?? "",
+        prismNo: item?.prism_no ?? "",
+        storage: details.storage,
+        cardType: details.cardType,
         price: item?.price ?? "",
         statusAfter: r.status_after,
         penalty,
@@ -229,8 +275,12 @@ export function summarizeBatch(
     occurredAt: first.occurred_at,
     fromName: first.from_person,
     toName: first.to_person,
+    fromHubId,
+    fromHubName,
     hubId: first.hub,
     hubName,
+    recordedBy: first.recorded_by ?? "",
+    recordedAt: first.recorded_at ?? "",
     note: first.note,
     items: lines,
 

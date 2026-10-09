@@ -247,8 +247,8 @@ export async function buildReceiptPdf(
     });
   };
 
-  partyBox(margin, "FROM", summary.fromName, summary.fromName);
-  partyBox(margin + boxWidth + boxGap, "TO", summary.toName, summary.toName);
+  partyBox(margin, "FROM", summary.fromName, summary.fromHubName);
+  partyBox(margin + boxWidth + boxGap, "TO", summary.toName, summary.hubName);
   y -= boxHeight + 10;
 
   // Other batch details.
