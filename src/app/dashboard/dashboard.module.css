@@ -250,56 +250,80 @@
   font-size: 0.8rem;
 }
 
-/* Hub tree chart, vertical: the main hub at the top, each level below it,
-   indented, joined to its parent by elbow lines down the left side. */
+/* Hub tree chart, left to right: the main hub on the left (vertically
+   centred), a branch line to the right, and its hubs stacked in a column.
+   Deeper levels branch further to the right the same way. */
 .orgScroll {
   overflow-x: auto;
-  padding: 4px 2px 12px;
+  padding: 8px 2px 12px;
 }
 .org {
   --line: var(--baseline);
-  --indent: 28px;
+  --gap: 22px; /* half the space between a box and its children */
+  display: flex;
+  min-width: max-content;
 }
 .org ul {
   display: flex;
   flex-direction: column;
+  justify-content: center;
   gap: 10px;
   margin: 0;
-  padding: 10px 0 0 var(--indent);
+  padding: 0 0 0 calc(var(--gap) * 2);
   list-style: none;
+  position: relative;
 }
 .org > ul {
-  padding: 0;
+  padding-left: 0;
 }
 .org li {
   position: relative;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
 }
-/* Elbow from the parent's line into each child box. */
+/* Line from a parent box across to its children's spine. */
+.org ul ul::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: var(--gap);
+  border-top: 1px solid var(--line);
+}
+/* Short line from the spine into each child box. */
 .org ul ul > li::before {
   content: "";
   position: absolute;
-  left: calc(var(--indent) * -1 + 10px);
-  top: -10px;
-  width: calc(var(--indent) - 10px);
-  height: 40px;
-  border-left: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-  border-bottom-left-radius: 8px;
+  left: calc(var(--gap) * -1);
+  top: 50%;
+  width: var(--gap);
+  border-top: 1px solid var(--line);
 }
-/* Line carrying on down to the next sibling. */
-.org ul ul > li:not(:last-child)::after {
+/* The vertical spine joining the children. */
+.org ul ul > li::after {
   content: "";
   position: absolute;
-  left: calc(var(--indent) * -1 + 10px);
-  top: 0;
-  bottom: -10px;
+  left: calc(var(--gap) * -1);
+  top: -5px;
+  bottom: -5px;
   border-left: 1px solid var(--line);
+}
+.org ul ul > li:first-child::after {
+  top: 50%;
+  border-top-left-radius: 8px;
+}
+.org ul ul > li:last-child::after {
+  bottom: 50%;
+}
+.org ul ul > li:only-child::after {
+  display: none;
 }
 
 .orgBox {
   display: grid;
   gap: 6px;
-  width: min(100%, 380px);
+  width: 230px;
   box-sizing: border-box;
   padding: 12px 14px;
   border: 1px solid var(--border);
