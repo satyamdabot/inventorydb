@@ -235,6 +235,9 @@ export default async function DashboardPage({ searchParams }: PageProps<"/dashbo
           <Link href="/inventory" className={styles.tab}>
             Inventory
           </Link>
+          <Link href="/handover/receipts" className={styles.tab}>
+            Receipts
+          </Link>
           {user.role === "admin" && (
             <Link href="/admin/hubs" className={styles.tab}>
               Hubs

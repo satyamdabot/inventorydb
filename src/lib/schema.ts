@@ -58,6 +58,17 @@ export const TABS = {
     "reason",
     "history_json",
   ],
+  // Audit log of admin edits to past receipts: who changed what, and when.
+  receipt_edits: [
+    "edit_id",
+    "edited_at",
+    "edited_by_email",
+    "edited_by_name",
+    "batch_id",
+    "field",
+    "old_value",
+    "new_value",
+  ],
 } as const;
 
 export type TabName = keyof typeof TABS;
@@ -175,6 +186,17 @@ export interface Deletion extends Row {
   history_json: string;
 }
 
+export interface ReceiptEdit extends Row {
+  edit_id: string;
+  edited_at: string;
+  edited_by_email: string;
+  edited_by_name: string;
+  batch_id: string;
+  field: string;
+  old_value: string;
+  new_value: string;
+}
+
 export interface TabRows {
   items: Item;
   events: ItemEvent;
@@ -184,4 +206,5 @@ export interface TabRows {
   users: AppUser;
   status_limits: Row;
   deletions: Deletion;
+  receipt_edits: ReceiptEdit;
 }

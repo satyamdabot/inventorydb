@@ -41,6 +41,13 @@ const WORK: Tile[] = [
     roles: ["admin", "im", "rig"],
   },
   {
+    href: "/handover/receipts",
+    title: "Receipts",
+    desc: "View and download every receipt. Admins can edit or delete.",
+    icon: "database",
+    roles: ["admin", "im", "rig"],
+  },
+  {
     href: "/handover/send",
     title: "Send items",
     desc: "Hand items to an IM, IFO, FO, the rig team or a hub.",

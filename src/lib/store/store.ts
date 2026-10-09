@@ -123,6 +123,19 @@ export class Store {
   }
   
   /**
+   * Record an admin edit to a past receipt in the "receipt_edits" tab.
+   * Creates the tab the first time it is needed.
+   */
+  async logReceiptEdit(row: TabRows["receipt_edits"]) {
+    try {
+      await this.backend.append("receipt_edits", [row]);
+    } catch {
+      await this.backend.ensureTabs();
+      await this.backend.append("receipt_edits", [row]);
+    }
+  }
+
+  /**
    * Permanent deletion.
    * The calling server action must enforce Admin authorization.
    */
