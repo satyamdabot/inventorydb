@@ -464,8 +464,7 @@ export async function SummaryKpis({
                   fontWeight: 600,
                 }}
               >
-                Storage and colour describe the same fleet.
-                Do not add the four counts together.
+              
               </span>
             </span>
           )}
