@@ -250,92 +250,57 @@
   font-size: 0.8rem;
 }
 
-/* Hub tree chart: one box per hub, joined by lines. The lines come from the nested lists themselves. */
+/* Hub tree chart, vertical: the main hub at the top, each level below it,
+   indented, joined to its parent by elbow lines down the left side. */
 .orgScroll {
   overflow-x: auto;
   padding: 4px 2px 12px;
 }
 .org {
   --line: var(--baseline);
-  display: flex;
-  justify-content: center;
-  min-width: max-content;
-  margin: 0 auto;
+  --indent: 28px;
 }
 .org ul {
   display: flex;
-  justify-content: center;
+  flex-direction: column;
+  gap: 10px;
   margin: 0;
-  padding: 22px 0 0;
+  padding: 10px 0 0 var(--indent);
   list-style: none;
-  position: relative;
 }
 .org > ul {
-  padding-top: 0;
+  padding: 0;
 }
 .org li {
   position: relative;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 22px 8px 0;
 }
-/* Horizontal bar across the siblings, and a short drop to each box. */
-.org li::before,
-.org li::after {
+/* Elbow from the parent's line into each child box. */
+.org ul ul > li::before {
   content: "";
   position: absolute;
-  top: 0;
-  right: 50%;
-  width: 50%;
-  height: 22px;
-  border-top: 1px solid var(--line);
-}
-.org li::after {
-  right: auto;
-  left: 50%;
+  left: calc(var(--indent) * -1 + 10px);
+  top: -10px;
+  width: calc(var(--indent) - 10px);
+  height: 40px;
   border-left: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  border-bottom-left-radius: 8px;
 }
-.org li:only-child::before,
-.org li:only-child::after {
-  display: none;
-}
-.org li:only-child {
-  padding-top: 0;
-}
-.org li:first-child::before,
-.org li:last-child::after {
-  border: 0 none;
-}
-.org li:last-child::before {
-  border-right: 1px solid var(--line);
-  border-radius: 0 8px 0 0;
-}
-.org li:first-child::after {
-  border-radius: 8px 0 0 0;
-}
-/* The line from a parent box down to its row of children. */
-.org ul ul::before {
+/* Line carrying on down to the next sibling. */
+.org ul ul > li:not(:last-child)::after {
   content: "";
   position: absolute;
+  left: calc(var(--indent) * -1 + 10px);
   top: 0;
-  left: 50%;
-  height: 22px;
+  bottom: -10px;
   border-left: 1px solid var(--line);
-}
-/* Top-level hubs have nothing above them. */
-.org > ul > li {
-  padding-top: 0;
-}
-.org > ul > li::before,
-.org > ul > li::after {
-  display: none;
 }
 
 .orgBox {
   display: grid;
   gap: 6px;
-  width: 210px;
+  width: min(100%, 380px);
+  box-sizing: border-box;
   padding: 12px 14px;
   border: 1px solid var(--border);
   border-radius: 12px;
@@ -408,38 +373,6 @@
   padding: 0 7px;
 }
 
-/* On a phone the tree stacks: each level sits under its parent, indented, with a rule down the side. */
-@media (max-width: 720px) {
-  .org {
-    min-width: 0;
-    justify-content: stretch;
-  }
-  .org ul {
-    flex-direction: column;
-    align-items: stretch;
-    padding: 8px 0 0 14px;
-    border-left: 1px solid var(--line);
-    margin-left: 6px;
-  }
-  .org > ul {
-    border-left: 0;
-    margin-left: 0;
-    padding-left: 0;
-  }
-  .org li,
-  .org > ul > li {
-    align-items: stretch;
-    padding: 8px 0 0;
-  }
-  .org li::before,
-  .org li::after,
-  .org ul ul::before {
-    display: none;
-  }
-  .orgBox {
-    width: auto;
-  }
-}
 /* Two more chart hues (yellow, violet) for the tile icons. Same palette, stepped for dark. */
 .root {
   --series-4: #eda100;
