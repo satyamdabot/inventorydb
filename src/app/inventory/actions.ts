@@ -319,3 +319,214 @@ export async function lookupAsset(serial: string) {
     price: penaltyForCapacity(capacity),
   };
 }
+/* ------------------------------------------------------------------ */
+/* ADD MULTIPLE ITEMS                                                  */
+/* ------------------------------------------------------------------ */
+
+const BULK_LIMIT = 200;
+
+export type SerialCheck = {
+  serial: string;
+  /**
+   * ready     – found in the asset sheet, not in inventory yet
+   * exists    – already in the inventory
+   * notfound  – not in the asset sheet
+   * repeated  – the same serial appears earlier in the list
+   */
+  status: "ready" | "exists" | "notfound" | "repeated";
+  prismNo: string;
+  brand: string;
+  model: string;
+  capacity: string;
+  cardType: string;
+};
+
+/**
+ * CHECK SERIALS: Admin, IM and Rig.
+ * Looks up every serial in the asset sheet in one go and flags the ones
+ * already in the inventory, so the bulk form can show a table to review.
+ */
+export async function checkSerials(
+  serials: string[]
+): Promise<SerialCheck[]> {
+  await requireRole("admin", "im", "rig");
+
+  const cleaned = serials
+    .map((s) => String(s ?? "").trim())
+    .filter(Boolean)
+    .slice(0, BULK_LIMIT);
+
+  if (!cleaned.length) return [];
+
+  const [records, items] = await Promise.all([
+    loadAssetRecords(),
+    getStore().list("items"),
+  ]);
+
+  const inInventory = new Set(
+    items.map((item) => item.item_id.toUpperCase())
+  );
+  const seen = new Set<string>();
+
+  return cleaned.map((serial): SerialCheck => {
+    const key = serial.toUpperCase();
+    const found = findAsset(records, serial);
+    const capacity = normalizeCapacity(found?.capacity ?? "");
+    const cardType = ["Black", "Green"].includes(found?.cardType ?? "")
+      ? (found?.cardType ?? "")
+      : "";
+
+    const details = {
+      serial,
+      prismNo: found?.prismNo ?? "",
+      brand: found?.brand ?? "",
+      model: found?.model ?? "",
+      capacity: ["256 GB", "512 GB"].includes(capacity) ? capacity : "",
+      cardType,
+    };
+
+    if (seen.has(key)) return { ...details, status: "repeated" };
+    seen.add(key);
+
+    if (inInventory.has(key)) return { ...details, status: "exists" };
+    if (!found) return { ...details, status: "notfound" };
+    return { ...details, status: "ready" };
+  });
+}
+
+export type BulkAddRow = {
+  serial: string;
+  prismNo: string;
+  brand: string;
+  model: string;
+  capacity: string;
+  cardType: string;
+};
+
+export type BulkAddResult = {
+  added: string[];
+  skipped: { serial: string; reason: string }[];
+  error?: string;
+};
+
+/**
+ * ADD MULTIPLE ITEMS: Admin, IM and Rig.
+ * Same rules as addItem for every row: home hub required, storage
+ * 256 GB / 512 GB, penalty worked out on the server from storage.
+ * Rows that fail are skipped; the rest are saved together.
+ */
+export async function addItems(input: {
+  homeHub: string;
+  rows: BulkAddRow[];
+}): Promise<BulkAddResult> {
+  const user = await requireRole("admin", "im", "rig");
+
+  const homeHub = String(input?.homeHub ?? "").trim();
+  const rows = (input?.rows ?? []).slice(0, BULK_LIMIT);
+
+  if (!homeHub) {
+    return { added: [], skipped: [], error: "Select the home hub." };
+  }
+  if (!rows.length) {
+    return { added: [], skipped: [], error: "There are no items to add." };
+  }
+
+  const store = getStore();
+  const [items, hubs] = await Promise.all([
+    store.list("items"),
+    store.list("hubs"),
+  ]);
+
+  if (
+    !hubs.some((hub) => hub.hub_id === homeHub && hub.active !== "false")
+  ) {
+    return {
+      added: [],
+      skipped: [],
+      error: "Please select a valid active home hub.",
+    };
+  }
+
+  // Grows as rows are planned, so a serial repeated in the list is caught too.
+  const known = [...items];
+  const events: Parameters<typeof store.commitBatch>[0] = [];
+  const toSave: Parameters<typeof store.commitBatch>[1] = [];
+  const skipped: BulkAddResult["skipped"] = [];
+  const now = istTimestamp();
+
+  for (const row of rows) {
+    const serial = String(row?.serial ?? "").trim();
+    const capacity = normalizeCapacity(String(row?.capacity ?? ""));
+    const cardType = String(row?.cardType ?? "").trim();
+
+    if (!["256 GB", "512 GB"].includes(capacity)) {
+      skipped.push({ serial, reason: "Select 256 GB or 512 GB." });
+      continue;
+    }
+    if (cardType && !["Black", "Green"].includes(cardType)) {
+      skipped.push({ serial, reason: "Card type must be Black or Green." });
+      continue;
+    }
+
+    const price = penaltyForCapacity(capacity);
+
+    const plan = planAddItem(
+      {
+        itemId: serial,
+        homeHub,
+        prismNo: String(row?.prismNo ?? "").trim(),
+        brand: String(row?.brand ?? "").trim(),
+        model: String(row?.model ?? "").trim(),
+        price,
+      },
+      known,
+      {
+        hubs,
+        by: user.email ?? "unknown",
+        now,
+        newId: (prefix) => `${prefix}-${randomUUID().slice(0, 8)}`,
+      }
+    );
+
+    if (plan.errors.length || !plan.item || !plan.event) {
+      skipped.push({
+        serial,
+        reason: plan.errors.join(" ") || "Could not be prepared.",
+      });
+      continue;
+    }
+
+    let attributes: Record<string, unknown> = {};
+    try {
+      const parsed: unknown = plan.item.attributes?.trim()
+        ? JSON.parse(plan.item.attributes)
+        : {};
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        attributes = parsed as Record<string, unknown>;
+      }
+    } catch {
+      // planAddItem leaves attributes empty; nothing to keep.
+    }
+
+    const item = {
+      ...plan.item,
+      price,
+      attributes: JSON.stringify({
+        ...attributes,
+        capacity,
+        card_type: cardType,
+      }),
+    };
+
+    events.push(plan.event);
+    toSave.push(item);
+    known.push(item);
+  }
+
+  if (toSave.length) {
+    await store.commitBatch(events, toSave);
+    refreshInventoryPages();
+  }
+
+  return { added: toSave.map((item) => item.item_id), skipped };
+}

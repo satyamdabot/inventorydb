@@ -7,6 +7,7 @@ import { getStore } from "@/lib/store";
 import { formatIst } from "@/lib/time";
 import styles from "../admin/admin.module.css";
 import AddCardForm from "./AddCardForm";
+import BulkAddForm from "./BulkAddForm";
 import { applyCorrection } from "./actions";
 import CorrectionPanel from "./CorrectionPanel";
 
@@ -451,6 +452,21 @@ export default async function InventoryPage({
           )}
 
           <AddCardForm hubs={activeHubs} />
+        </details>
+      )}
+
+      {/* Add many items at once: one home hub, many serials. */}
+      {canAdd && (
+        <details className={styles.details}>
+          <summary>+ Add multiple items</summary>
+
+          <p className={styles.muted}>
+            Scan or paste several Serial / Asset Tags. Details load
+            automatically for each one. All items start in stock at the
+            home hub you choose.
+          </p>
+
+          <BulkAddForm hubs={activeHubs} />
         </details>
       )}
 
