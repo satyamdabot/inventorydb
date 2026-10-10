@@ -68,7 +68,8 @@ function checkLabel(row: Row): { text: string; color: string } {
     return { text: "Repeated in list", color: "#8A4B00" };
   if (row.status === "notfound")
     return { text: "Not found – use Add an item", color: "#B42318" };
-  if (!row.capacity) return { text: "Choose storage", color: "#8A4B00" };
+  if (!row.capacity)
+    return { text: "No storage in sheet – use Add an item", color: "#B42318" };
   return { text: "Ready", color: "#15803D" };
 }
 
@@ -156,12 +157,6 @@ export default function BulkAddForm({
       timer.current = null;
       void check(value);
     }, 800);
-  }
-
-  function updateRow(key: string, change: Partial<Row>) {
-    setRows((current) =>
-      current.map((row) => (row.key === key ? { ...row, ...change } : row))
-    );
   }
 
   function removeRow(key: string) {
@@ -295,7 +290,7 @@ export default function BulkAddForm({
         {rows.length > 0 && (
           <span className={styles.muted}>
             {rows.length} checked · {readyRows.length} ready
-            {counts.noStorage ? ` · ${counts.noStorage} need storage` : ""}
+            {counts.noStorage ? ` · ${counts.noStorage} missing storage` : ""}
             {counts.exists ? ` · ${counts.exists} already in inventory` : ""}
             {counts.repeated ? ` · ${counts.repeated} repeated` : ""}
             {counts.notfound ? ` · ${counts.notfound} not found` : ""}
@@ -324,43 +319,14 @@ export default function BulkAddForm({
             <tbody>
               {rows.map((row, index) => {
                 const label = checkLabel(row);
-                const editable = row.status === "ready";
                 return (
                   <tr key={row.key} style={{ borderBottom: "1px solid #eee" }}>
                     <td style={cellStyle}>{index + 1}</td>
                     <td style={{ ...cellStyle, fontFamily: "monospace" }}>{row.serial}</td>
                     <td style={{ ...cellStyle, fontFamily: "monospace" }}>{row.prismNo || "—"}</td>
                     <td style={cellStyle}>{row.model || row.brand || "—"}</td>
-                    <td style={cellStyle}>
-                      {editable ? (
-                        <select
-                          aria-label={`Storage for ${row.serial}`}
-                          value={row.capacity}
-                          onChange={(e) => updateRow(row.key, { capacity: e.target.value })}
-                        >
-                          <option value="">Select</option>
-                          <option value="256 GB">256 GB</option>
-                          <option value="512 GB">512 GB</option>
-                        </select>
-                      ) : (
-                        row.capacity || "—"
-                      )}
-                    </td>
-                    <td style={cellStyle}>
-                      {editable ? (
-                        <select
-                          aria-label={`Colour for ${row.serial}`}
-                          value={row.cardType}
-                          onChange={(e) => updateRow(row.key, { cardType: e.target.value })}
-                        >
-                          <option value="">—</option>
-                          <option value="Black">Black</option>
-                          <option value="Green">Green</option>
-                        </select>
-                      ) : (
-                        row.cardType || "—"
-                      )}
-                    </td>
+                    <td style={cellStyle}>{row.capacity || "—"}</td>
+                    <td style={cellStyle}>{row.cardType || "—"}</td>
                     <td style={cellStyle}>{penaltyLabel(row.capacity)}</td>
                     <td style={{ ...cellStyle, color: label.color, fontWeight: 600 }}>
                       {label.text}
