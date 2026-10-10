@@ -7,59 +7,141 @@ import { formatIst } from "./time";
  * Emails the receipt PDF to both people on a batch: the person who sent the
  * items (From) and the person who received them (To).
  *
- * Email addresses are looked up by name in the "person" tab of the store.
- * The tab needs a name column and an email column; common header names are
- * recognised (see NAME_FIELDS and EMAIL_FIELDS below).
+ * Email addresses are looked up by name in the people tab of the store.
+ * The lookup is forgiving:
+ *   - Tab: PEOPLE_TAB if set, otherwise the first of "person", "people",
+ *     "persons", "users", "employees", "staff", "team" that has data.
+ *   - Email column: any column whose header contains "mail"
+ *     (email, Email ID, Mail ID, Email Address, e-mail ...). If there is no
+ *     such column, any cell in the row that looks like an email is used.
+ *   - Name column: name, full name, person, person name, employee name ...
+ *     or any column whose header contains "name".
+ *   - Names are matched ignoring capital letters, extra spaces and dots,
+ *     so "Sharath M S", "sharath m.s." and "SHARATH  M S" all match.
  *
  * Settings (Vercel → Project → Settings → Environment Variables):
  *   SMTP_USER     Gmail / Workspace address that sends the email   (required)
- *   SMTP_PASS     App password for that account                    (required)
+ *   SMTP_PASS     App password for that account, no spaces         (required)
  *   SMTP_HOST     default smtp.gmail.com
  *   SMTP_PORT     default 465
  *   MAIL_FROM     e.g. "Instawork Receipts <receipts@yourcompany.com>"
  *                 default: SMTP_USER
- *   PEOPLE_TAB    store tab with names and emails, default "person"
- *
- * For Gmail: turn on 2-Step Verification for the sending account, then create
- * an app password at https://myaccount.google.com/apppasswords and use it as
- * SMTP_PASS (not the normal account password).
+ *   PEOPLE_TAB    store tab with names and emails (optional, see above)
  */
 
-const NAME_FIELDS = ["name", "full_name", "person", "person_name", "Name", "Full name", "Person"];
-const EMAIL_FIELDS = ["email", "email_id", "mail", "Email", "Email ID", "Email id", "E-mail"];
+const TAB_CANDIDATES = ["person", "people", "persons", "users", "employees", "staff", "team"];
+const PREFERRED_NAME_HEADERS = [
+  "name",
+  "fullname",
+  "person",
+  "personname",
+  "employeename",
+  "staffname",
+  "membername",
+];
 
 type Row = Record<string, unknown>;
 
-function field(row: Row, keys: string[]): string {
-  for (const key of keys) {
-    const value = row[key];
-    if (typeof value === "string" && value.trim()) return value.trim();
+/** "Email ID" -> "emailid", "Full Name" -> "fullname" */
+const headerKey = (header: string) => header.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+/** "Sharath  M.S." -> "sharath m s" */
+const nameKey = (name: string) =>
+  name
+    .toLowerCase()
+    .replace(/[.]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+const looksLikeEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+
+function text(value: unknown): string {
+  if (typeof value === "string") return value.trim();
+  if (typeof value === "number") return String(value);
+  return "";
+}
+
+function emailFromRow(row: Row): string {
+  // 1. A column whose header contains "mail".
+  for (const [header, value] of Object.entries(row)) {
+    if (headerKey(header).includes("mail") && looksLikeEmail(text(value))) {
+      return text(value);
+    }
+  }
+  // 2. Any cell that looks like an email.
+  for (const value of Object.values(row)) {
+    if (looksLikeEmail(text(value))) return text(value);
   }
   return "";
 }
 
-const normalise = (name: string) => name.trim().replace(/\s+/g, " ").toLowerCase();
-const looksLikeEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+function nameFromRow(row: Row): string {
+  const entries = Object.entries(row).map(([header, value]) => [headerKey(header), text(value)] as const);
 
-async function emailForNames(names: string[]): Promise<Map<string, string>> {
-  const tab = process.env.PEOPLE_TAB || "person";
+  for (const wanted of PREFERRED_NAME_HEADERS) {
+    const match = entries.find(([key, value]) => key === wanted && value);
+    if (match) return match[1];
+  }
+
+  // Any header containing "name", but not things like hub/location/user names.
+  const loose = entries.find(
+    ([key, value]) =>
+      value &&
+      key.includes("name") &&
+      !/(hub|location|site|city|user|login|file|brand|model)/.test(key)
+  );
+  return loose ? loose[1] : "";
+}
+
+async function readTab(tab: string): Promise<Row[]> {
   const store = getStore();
   const list = store.list as unknown as (collection: string) => Promise<Row[]>;
-  const rows = await list.call(store, tab);
+  try {
+    const rows = await list.call(store, tab);
+    return Array.isArray(rows) ? rows : [];
+  } catch {
+    return [];
+  }
+}
+
+export type EmailLookup = {
+  /** Store tab the emails were read from ("" if none had data). */
+  tab: string;
+  /** Name as written on the receipt -> email address. */
+  emails: Map<string, string>;
+};
+
+/**
+ * Finds email addresses for the given names.
+ * Exported so the on-screen receipt can show the same Email ID.
+ */
+export async function lookupEmails(names: string[]): Promise<EmailLookup> {
+  const tabs = process.env.PEOPLE_TAB ? [process.env.PEOPLE_TAB] : TAB_CANDIDATES;
+
+  let usedTab = "";
+  let rows: Row[] = [];
+  for (const tab of tabs) {
+    rows = await readTab(tab);
+    if (rows.length > 0) {
+      usedTab = tab;
+      break;
+    }
+  }
 
   const byName = new Map<string, string>();
   for (const row of rows) {
-    const name = field(row, NAME_FIELDS);
-    const email = field(row, EMAIL_FIELDS);
-    if (name && looksLikeEmail(email)) byName.set(normalise(name), email);
+    const name = nameFromRow(row);
+    const email = emailFromRow(row);
+    if (name && email) byName.set(nameKey(name), email);
   }
 
-  const found = new Map<string, string>();
+  const emails = new Map<string, string>();
   for (const name of names) {
-    const email = name ? byName.get(normalise(name)) : undefined;
-    if (email) found.set(name, email);
+    const email = name ? byName.get(nameKey(name)) : undefined;
+    if (email) emails.set(name, email);
   }
-  return found;
+
+  return { tab: usedTab, emails };
 }
 
 function escapeHtml(value: string) {
@@ -72,9 +154,9 @@ function escapeHtml(value: string) {
 
 function transport() {
   const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASS;
+  const pass = (process.env.SMTP_PASS ?? "").replace(/\s+/g, "");
   if (!user || !pass) {
-    throw new Error("Receipt email needs SMTP_USER and SMTP_PASS.");
+    throw new Error("Receipt email needs SMTP_USER and SMTP_PASS in Vercel settings.");
   }
 
   const port = Number(process.env.SMTP_PORT || 465);
@@ -88,8 +170,10 @@ function transport() {
 
 export type ReceiptEmailResult = {
   sentTo: string[];
-  /** Names on the batch with no email found in the person tab. */
+  /** Names on the batch with no email found. */
   missing: string[];
+  /** Tab the emails were looked up in. */
+  tab: string;
 };
 
 /**
@@ -107,24 +191,35 @@ export async function sendReceiptEmail(options: {
   const { summary, title, pdf, fileName, receiptUrl, totalPenalty } = options;
 
   const names = [summary.fromName, summary.toName].filter(Boolean);
-  const emails = await emailForNames(names);
+  const { tab, emails } = await lookupEmails(names);
 
   const missing = names.filter((name) => !emails.has(name));
   const sentTo = [...new Set(emails.values())];
 
+  if (!tab) {
+    console.warn(
+      `[receipt-email] No people tab found. Tried: ${(process.env.PEOPLE_TAB ? [process.env.PEOPLE_TAB] : TAB_CANDIDATES).join(", ")}. Set PEOPLE_TAB in Vercel.`
+    );
+  }
+
   if (sentTo.length === 0) {
-    return { sentTo, missing };
+    console.warn(
+      `[receipt-email] Batch ${summary.batchId}: no email found for ${names.join(" / ")} in tab "${tab || "none"}". Nothing sent.`
+    );
+    return { sentTo, missing, tab };
   }
 
   const itemCount = summary.items.length;
   const when = `${formatIst(summary.occurredAt)} IST`;
+  const sentBy = `${summary.fromName || "—"}${summary.fromHubName ? ` (${summary.fromHubName})` : ""}`;
+  const sentToLabel = `${summary.toName || "—"}${summary.hubName ? ` (${summary.hubName})` : ""}`;
   const subject = `${title} ${summary.batchId} - ${summary.fromName || "—"} to ${summary.toName || "—"}`;
 
-  const text = [
+  const textBody = [
     `${title} for batch ${summary.batchId}`,
     "",
-    `Sent by: ${summary.fromName || "—"}${summary.fromHubName ? ` (${summary.fromHubName})` : ""}`,
-    `Sent to: ${summary.toName || "—"}${summary.hubName ? ` (${summary.hubName})` : ""}`,
+    `Sent by: ${sentBy}`,
+    `Sent to: ${sentToLabel}`,
     `Date & time: ${when}`,
     `Items: ${itemCount}`,
     `Total listed penalty amount: ${totalPenalty}`,
@@ -141,8 +236,8 @@ export async function sendReceiptEmail(options: {
 <div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#1a1a1a">
   <p style="font-size:18px;margin:0 0 12px"><strong>${escapeHtml(title)}</strong> &middot; Batch ${escapeHtml(summary.batchId)}</p>
   <table style="border-collapse:collapse">
-    ${row("Sent by", `${summary.fromName || "—"}${summary.fromHubName ? ` (${summary.fromHubName})` : ""}`)}
-    ${row("Sent to", `${summary.toName || "—"}${summary.hubName ? ` (${summary.hubName})` : ""}`)}
+    ${row("Sent by", sentBy)}
+    ${row("Sent to", sentToLabel)}
     ${row("Date & time", when)}
     ${row("Items", String(itemCount))}
     ${row("Total listed penalty amount", totalPenalty)}
@@ -155,7 +250,7 @@ export async function sendReceiptEmail(options: {
     from: process.env.MAIL_FROM || process.env.SMTP_USER,
     to: sentTo,
     subject,
-    text,
+    text: textBody,
     html,
     attachments: [
       {
@@ -166,5 +261,6 @@ export async function sendReceiptEmail(options: {
     ],
   });
 
-  return { sentTo, missing };
+  console.log(`[receipt-email] Batch ${summary.batchId}: sent to ${sentTo.join(", ")}.`);
+  return { sentTo, missing, tab };
 }

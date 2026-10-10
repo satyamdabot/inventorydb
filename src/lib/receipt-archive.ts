@@ -694,7 +694,13 @@ export async function saveReceipt(batchId: string, baseUrl: string) {
       );
     }
 
-    return { fileName, pdfLink, emailedTo: email.sentTo, noEmailFor: email.missing };
+    return {
+      fileName,
+      pdfLink,
+      emailedTo: email.sentTo,
+      noEmailFor: email.missing,
+      peopleTab: email.tab || "not found",
+    };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(`Failed while ${step}: ${message}`);
